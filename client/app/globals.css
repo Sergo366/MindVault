@@ -1,0 +1,95 @@
+@import 'tailwindcss';
+
+:root {
+  --background: #0e0e11;
+  --foreground: #ffffff;
+  --primary: #d4af35;
+  --primary-hover: rgba(255, 255, 255, 0.9);
+  --secondary: #141418;
+  --accent: #ffffff;
+  --accent-glow: rgba(255, 255, 255, 0.1);
+  --card: #18181f;
+  --border: rgba(255, 255, 255, 0.06);
+  --background-button: rgb(145 158 171);
+  --text-color-white: #e5e5e5;
+  --text-color-dark: #1a1608;
+  --text-color-secondary: #757575;
+  --text-color-decor: #4d4d4d;
+}
+
+@theme inline {
+  --color-background: #0e0e11;
+  --color-foreground: #ffffff;
+  --color-primary: #d4af35;
+  --color-primary-hover: rgba(255, 255, 255, 0.9);
+  --color-secondary: #141418;
+  --color-card: #18181f;
+  --color-border: rgba(255, 255, 255, 0.06);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono:
+    var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  --animate-shake: shake 0.2s ease-in-out 0s 2;
+
+  @keyframes shake {
+    0%,
+    100% {
+      transform: translateX(0);
+    }
+    25% {
+      transform: translateX(-4px);
+    }
+    75% {
+      transform: translateX(4px);
+    }
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  min-height: 100vh;
+}
+
+/* Custom selection color to match theme */
+::selection {
+  background-color: rgba(212, 196, 168, 0.3);
+  color: #f5f5f7;
+}
+
+/* Force dark background for autofill */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px #121214 inset !important;
+  -webkit-text-fill-color: #e7e7e7 !important;
+  caret-color: #ffffff !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+/* Custom Scrollbar Styles */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+}
+

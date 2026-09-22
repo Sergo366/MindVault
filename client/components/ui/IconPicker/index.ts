@@ -1,0 +1,1 @@
+export { IconPicker, CATEGORY_ICONS, ICON_MAP } from './IconPicker';

@@ -1,0 +1,42 @@
+{
+  "name": "fitly",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Fitly monorepo - Next.js client and NestJS server",
+  "workspaces": [
+    "client",
+    "server"
+  ],
+  "scripts": {
+    "predev": "docker compose up -d",
+    "clean:client": "rm -f ./client/.next/dev/lock",
+    "dev:client": "npm run clean:client && npm run dev --workspace=client",
+    "kill-port": "lsof -ti :4000 | xargs -r kill -9",
+    "dev:server": "npm run kill-port && npm run start:debug --workspace=server",
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "stopdev": "docker compose down",
+    "build:client": "npm run build --workspace=client",
+    "build:server": "npm run build --workspace=server",
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces",
+    "test:client": "npm run test --workspace=client",
+    "test:server": "npm run test --workspace=server",
+    "lint": "npm run lint --workspaces",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\""
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "concurrently": "^8.2.2",
+    "eslint": "^8.56.0",
+    "prettier": "^3.2.5",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "dependencies": {
+    "browser-image-compression": "^2.0.2"
+  }
+}

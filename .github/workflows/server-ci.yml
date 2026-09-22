@@ -1,0 +1,96 @@
+name: Server CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'server/**'
+      - 'package.json'
+      - '.github/workflows/server-ci.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'server/**'
+      - 'package.json'
+
+jobs:
+  test:
+    name: Test Server
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [20.x]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linter
+        run: npm run lint --workspace=server
+
+      - name: Run tests
+        run: npm run test --workspace=server -- --passWithNoTests
+
+
+  build:
+    name: Build Server
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build server
+        run: npm run build --workspace=server
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-dist
+          path: server/dist/
+          retention-days: 7
+
+  # Uncomment and configure when ready to deploy
+  # deploy:
+  #   name: Deploy Server
+  #   runs-on: ubuntu-latest
+  #   needs: build
+  #   if: github.ref == 'refs/heads/main'
+  #   
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+  #     
+  #     - name: Download build artifacts
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         name: server-dist
+  #         path: server/dist/
+  #     
+  #     - name: Deploy to production
+  #       run: |
+  #         # Add your deployment commands here
+  #         echo "Deploy to your server hosting platform"
