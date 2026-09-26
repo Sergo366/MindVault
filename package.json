@@ -9,10 +9,8 @@
   ],
   "scripts": {
     "predev": "docker compose up -d",
-    "clean:client": "rm -f ./client/.next/dev/lock",
-    "dev:client": "npm run clean:client && npm run dev --workspace=client",
-    "kill-port": "lsof -ti :4000 | xargs -r kill -9",
-    "dev:server": "npm run kill-port && npm run start:debug --workspace=server",
+    "dev:client": "npm run dev --workspace=client",
+    "dev:server": "npm run start:debug --workspace=server",
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "stopdev": "docker compose down",
     "build:client": "npm run build --workspace=client",
