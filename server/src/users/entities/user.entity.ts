@@ -5,7 +5,6 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
-  OneToMany,
 } from 'typeorm';
 
 export enum Gender {
@@ -51,5 +50,4 @@ export class User {
 
   @UpdateDateColumn()
   updatedAt: Date;
-
 }

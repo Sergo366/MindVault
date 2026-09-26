@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  Shirt,
+  Brain,
   Footprints,
   Watch,
   Glasses,
@@ -78,7 +78,7 @@ export interface IconOption {
 }
 
 export const CATEGORY_ICONS: IconOption[] = [
-  { name: 'Shirt', icon: Shirt },
+  { name: 'Brain', icon: Brain },
   { name: 'Footprints', icon: Footprints },
   { name: 'Watch', icon: Watch },
   { name: 'Glasses', icon: Glasses },

@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Fitly",
-  description: "Curate your perfect outfit",
+  title: "MindVault",
+  description: "Personal data storage",
 };
 
 export const viewport: Viewport = {

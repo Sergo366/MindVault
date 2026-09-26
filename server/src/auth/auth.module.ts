@@ -9,12 +9,7 @@ import { RtStrategy } from './rt.strategy';
 import { RedisModule } from '../redis/redis.module';
 
 @Module({
-  imports: [
-    UsersModule,
-    PassportModule,
-    RedisModule,
-    JwtModule.register({}),
-  ],
+  imports: [UsersModule, PassportModule, RedisModule, JwtModule.register({})],
   providers: [AuthService, JwtStrategy, RtStrategy],
   controllers: [AuthController],
 })

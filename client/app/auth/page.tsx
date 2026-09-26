@@ -88,7 +88,7 @@ export default function AuthPage() {
         <div className="text-center mb-10">
           <h1 className="text-4xl font-extrabold tracking-tight text-foreground mb-2 flex items-center justify-center gap-3">
             <Shirt className="w-10 h-10 text-primary animate-pulse" />
-            Fitly
+            MindVault
           </h1>
           <p className="text-stone-300 font-medium">Curate your perfect outfit</p>
         </div>
@@ -302,7 +302,7 @@ export default function AuthPage() {
         </div>
 
         <p className="mt-8 text-center text-sm text-stone-400">
-          By continuing, you agree to Fitly&apos;s{' '}
+          By continuing, you agree to MindVault&apos;s{' '}
           <a href="#" className="font-semibold text-stone-200 hover:text-primary transition-colors">Terms of Service</a> and{' '}
           <a href="#" className="font-semibold text-stone-200 hover:text-primary transition-colors">Privacy Policy</a>.
         </p>

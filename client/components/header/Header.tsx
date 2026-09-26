@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
-import { Shirt, LogOut, Settings, User, Plus } from 'lucide-react';
+import { Brain, LogOut, Settings, User } from 'lucide-react';
 import { Menu as HeadlessMenu, Transition } from '@headlessui/react';
 import { MENU_STYLES, DROPDOWN_TRANSITION } from '@/lib/styles/header';
 import { Fragment, useState, useEffect } from 'react';
@@ -53,7 +53,7 @@ export default function Header() {
           <div className="flex-shrink-0 flex items-center">
             <Link href="/" className="flex items-center gap-2 group">
               <div className="bg-primary/20 p-1.5 rounded-xl group-hover:bg-primary/30 transition-colors">
-                <Shirt className="w-6 h-6 text-primary" />
+                <Brain className="w-6 h-6 text-primary" />
               </div>
               <span className="text-xl font-bold tracking-tight text-foreground hidden sm:block">MindVault</span>
             </Link>

@@ -29,5 +29,4 @@ export class UserDto {
   @IsString()
   @IsOptional()
   location: string;
-
 }
