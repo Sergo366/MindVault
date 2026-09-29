@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Tab, TabGroup, TabList, TabPanel, TabPanels } from '@headlessui/react';
-import { Mail, Lock, Loader2, Shirt, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, Loader2, Eye, EyeOff, Brain } from 'lucide-react';
 import { useMutation } from '@tanstack/react-query';
 import { authApi, AuthCredentials, AuthResponse } from '@/api/auth';
 import { AxiosError } from 'axios';
@@ -87,10 +87,9 @@ export default function AuthPage() {
       <div className="w-full max-w-md z-10">
         <div className="text-center mb-10">
           <h1 className="text-4xl font-extrabold tracking-tight text-foreground mb-2 flex items-center justify-center gap-3">
-            <Shirt className="w-10 h-10 text-primary animate-pulse" />
+            <Brain className="w-10 h-10 text-primary animate-pulse" />
             MindVault
           </h1>
-          <p className="text-stone-300 font-medium">Curate your perfect outfit</p>
         </div>
 
         <div className="bg-card backdrop-blur-xl border border-border p-8 rounded-3xl shadow-2xl relative overflow-hidden">

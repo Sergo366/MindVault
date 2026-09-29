@@ -114,7 +114,7 @@ export default function Header() {
                     <HeadlessMenu.Item>
                       {({ active }) => (
                         <Link
-                          href="/profile"
+                          href="/settings/profile"
                           className={classNames(
                             active ? MENU_STYLES.itemActive : MENU_STYLES.itemInactive,
                             MENU_STYLES.item
@@ -129,14 +129,14 @@ export default function Header() {
                     <HeadlessMenu.Item>
                       {({ active }) => (
                         <Link
-                          href="/settings"
+                          href="/settings/investment"
                           className={classNames(
                             active ? MENU_STYLES.itemActive : MENU_STYLES.itemInactive,
                             MENU_STYLES.item
                           )}
                         >
                           <Settings className={classNames(MENU_STYLES.icon, active ? MENU_STYLES.iconActive : MENU_STYLES.iconInactive)} />
-                          Settings
+                          Investment settings
                         </Link>
                       )}
                     </HeadlessMenu.Item>
