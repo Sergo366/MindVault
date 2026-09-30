@@ -5,7 +5,9 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
+  OneToMany,
 } from 'typeorm';
+import { StatementRecord } from '../../investment/entities/statement-record.entity';
 
 export enum Gender {
   MALE = 'male',
@@ -44,6 +46,9 @@ export class User {
 
   @Column({ type: 'varchar', nullable: true })
   location: string | null;
+
+  @OneToMany(() => StatementRecord, (record) => record.user)
+  statementRecords: StatementRecord[];
 
   @CreateDateColumn()
   createdAt: Date;
