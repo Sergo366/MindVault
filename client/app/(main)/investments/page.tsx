@@ -26,15 +26,14 @@ export default function InvestmentsPage() {
 
     try {
       // API call to upload the CSV files to the backend
-      await apiClient.post('/portfolio/upload-ibkr', formData, {
+      await apiClient.post('/investment/upload-statements', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
       });
       
       // TODO: Handle successful upload (e.g., refetch portfolio data)
-      alert('Upload successful! (Backend needs to process this)');
-      
+
     } catch (error: any) {
       console.error('Failed to upload CSV:', error);
       setUploadError(error?.response?.data?.message || 'Failed to upload files. Please try again.');
@@ -47,7 +46,6 @@ export default function InvestmentsPage() {
 
   return (
     <div className="flex flex-col gap-8 max-w-[1400px] mx-auto pb-20 w-full animate-in fade-in duration-500 min-h-[60vh]">
-      
       <div className="flex justify-between items-center mt-6">
         <h1 className="text-3xl font-bold tracking-tight">Investments</h1>
         

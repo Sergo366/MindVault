@@ -9,6 +9,7 @@ import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { RedisModule } from './redis/redis.module';
+import { InvestmentModule } from './investment/investment.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { RedisModule } from './redis/redis.module';
     UsersModule,
     AuthModule,
     RedisModule,
+    InvestmentModule,
   ],
   controllers: [AppController],
   providers: [
