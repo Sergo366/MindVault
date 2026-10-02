@@ -1,91 +1,10 @@
 'use client';
 
 import { classNames } from '@/lib/styles/classNames';
+import { usePositions } from '@/hooks/usePositions';
+import type { Position } from '@/api/investment';
 
-export interface Position {
-  ticker: string;
-  name: string;
-  quantity: number;
-  price: number;
-  changePercent: number;
-  dailyPnl: number;
-  avgPrice: number;
-  costBasis: number;
-  marketValue: number;
-  unrealizedPnl: number;
-  unrealizedPnlAllocation: number;
-}
-
-// NOTE: There is no market-data API yet, so every price / P&L value below is a
-// hardcoded mock number ($$$). Replace `MOCK_POSITIONS` with real data once the
-// API is available. Nothing here is fetched.
-const MOCK_POSITIONS: Position[] = [
-  {
-    ticker: 'AAPL',
-    name: 'Apple Inc.',
-    quantity: 25,
-    price: 227.52,
-    changePercent: 1.24,
-    dailyPnl: 69.85,
-    avgPrice: 189.34,
-    costBasis: 4733.5,
-    marketValue: 5688.0,
-    unrealizedPnl: 954.5,
-    unrealizedPnlAllocation: 32.4,
-  },
-  {
-    ticker: 'MSFT',
-    name: 'Microsoft Corporation',
-    quantity: 12,
-    price: 412.18,
-    changePercent: -0.68,
-    dailyPnl: -33.74,
-    avgPrice: 358.9,
-    costBasis: 4306.8,
-    marketValue: 4946.16,
-    unrealizedPnl: 639.36,
-    unrealizedPnlAllocation: 21.7,
-  },
-  {
-    ticker: 'TSLA',
-    name: 'Tesla, Inc.',
-    quantity: 18,
-    price: 248.5,
-    changePercent: 3.12,
-    dailyPnl: 135.3,
-    avgPrice: 265.7,
-    costBasis: 4782.6,
-    marketValue: 4473.0,
-    unrealizedPnl: -309.6,
-    unrealizedPnlAllocation: -10.5,
-  },
-  {
-    ticker: 'NVDA',
-    name: 'NVIDIA Corporation',
-    quantity: 8,
-    price: 121.44,
-    changePercent: 2.05,
-    dailyPnl: 19.52,
-    avgPrice: 98.2,
-    costBasis: 785.6,
-    marketValue: 971.52,
-    unrealizedPnl: 185.92,
-    unrealizedPnlAllocation: 6.3,
-  },
-  {
-    ticker: 'VOO',
-    name: 'Vanguard S&P 500 ETF',
-    quantity: 10,
-    price: 512.36,
-    changePercent: 0.42,
-    dailyPnl: 21.4,
-    avgPrice: 470.15,
-    costBasis: 4701.5,
-    marketValue: 5123.6,
-    unrealizedPnl: 422.1,
-    unrealizedPnlAllocation: 14.3,
-  },
-];
+export type { Position };
 
 const currencyFormatter = new Intl.NumberFormat('en-US', {
   style: 'currency',
@@ -96,19 +15,25 @@ const currencyFormatter = new Intl.NumberFormat('en-US', {
 
 const quantityFormatter = new Intl.NumberFormat('en-US');
 
-function formatCurrency(value: number): string {
+const EMPTY_VALUE = '—';
+
+function formatCurrency(value: number | null | undefined): string {
+  if (value === null || value === undefined) return EMPTY_VALUE;
   return currencyFormatter.format(value);
 }
 
-function formatQuantity(value: number): string {
+function formatQuantity(value: number | null | undefined): string {
+  if (value === null || value === undefined) return EMPTY_VALUE;
   return quantityFormatter.format(value);
 }
 
-function formatChange(value: number): string {
+function formatChange(value: number | null | undefined): string {
+  if (value === null || value === undefined) return EMPTY_VALUE;
   return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
 }
 
-function pnlTextClass(value: number): string {
+function pnlTextClass(value: number | null | undefined): string {
+  if (value === null || value === undefined) return 'text-stone-500';
   if (value > 0) return 'text-emerald-400';
   if (value < 0) return 'text-red-400';
   return 'text-stone-400';
@@ -154,11 +79,40 @@ function SortChevron() {
 }
 
 interface PositionsTableProps {
+  // When provided, these rows are used instead of fetching from the API
+  // (useful for tests / storybooks).
   positions?: Position[];
 }
 
 export default function PositionsTable({ positions }: PositionsTableProps) {
-  const rows = positions ?? MOCK_POSITIONS;
+  const shouldFetch = positions === undefined;
+  const query = usePositions({ enabled: shouldFetch });
+
+  const rows = positions ?? query.data ?? [];
+
+  if (shouldFetch && query.isLoading) {
+    return (
+      <div className="w-full rounded-2xl border border-white/10 bg-white/[0.02] p-8 text-center text-sm text-stone-400">
+        Завантаження позицій…
+      </div>
+    );
+  }
+
+  if (shouldFetch && query.isError) {
+    return (
+      <div className="w-full rounded-2xl border border-red-400/20 bg-red-400/[0.03] p-8 text-center text-sm text-red-400">
+        Не вдалося завантажити позиції. Спробуйте оновити сторінку.
+      </div>
+    );
+  }
+
+  if (rows.length === 0) {
+    return (
+      <div className="w-full rounded-2xl border border-white/10 bg-white/[0.02] p-8 text-center text-sm text-stone-400">
+        Немає відкритих позицій. Завантажте виписку IBKR, щоб побачити дані.
+      </div>
+    );
+  }
 
   return (
     <div className="w-full overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.02]">
@@ -215,7 +169,7 @@ export default function PositionsTable({ positions }: PositionsTableProps) {
                 {formatQuantity(position.quantity)}
               </td>
 
-              {/* Current market price (hardcoded — no API yet) */}
+              {/* Current market price (0 until a quotes API exists) */}
               <td className="whitespace-nowrap px-4 py-3 text-right text-stone-200">
                 {formatCurrency(position.price)}
               </td>
