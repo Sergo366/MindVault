@@ -1,6 +1,7 @@
 'use client';
 
-import { Wallet } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, Wallet } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { classNames } from '@/lib/styles/classNames';
 import { usePositions } from '@/hooks/usePositions';
 import type { Position } from '@/api/investment';
@@ -61,8 +62,22 @@ function avatarColor(ticker: string): string {
   return AVATAR_COLORS[hash % AVATAR_COLORS.length] ?? DEFAULT_AVATAR_COLOR;
 }
 
+type SortKey =
+  | 'name'
+  | 'quantity'
+  | 'price'
+  | 'changePercent'
+  | 'dailyPnl'
+  | 'avgPrice'
+  | 'costBasis'
+  | 'marketValue'
+  | 'unrealizedPnl'
+  | 'allocation';
+
+type SortDirection = 'asc' | 'desc';
+
 interface ColumnDef {
-  key: string;
+  key: SortKey;
   label: string;
   align: 'left' | 'right';
 }
@@ -82,21 +97,40 @@ const COLUMNS: ColumnDef[] = [
   { key: 'allocation', label: 'Алок.', align: 'right' },
 ];
 
-function SortChevron() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 20 20"
-      fill="currentColor"
-      aria-hidden="true"
-      className="h-3 w-3 shrink-0 text-stone-500"
-    >
-      <path
-        fillRule="evenodd"
-        d="M10 3a.75.75 0 0 1 .55.24l3.25 3.5a.75.75 0 1 1-1.1 1.02L10 4.852 7.3 7.76a.75.75 0 0 1-1.1-1.02l3.25-3.5A.75.75 0 0 1 10 3Zm-3.76 9.2a.75.75 0 0 1 1.06.04l2.7 2.908 2.7-2.908a.75.75 0 1 1 1.1 1.02l-3.25 3.5a.75.75 0 0 1-1.1 0l-3.25-3.5a.75.75 0 0 1 .04-1.06Z"
-        clipRule="evenodd"
-      />
-    </svg>
+// The "name" column sorts by ticker; everything else sorts by its numeric value.
+function getSortValue(position: Position, key: SortKey): string | number {
+  if (key === 'name') return position.ticker.toLowerCase();
+  const value = position[key];
+  return value ?? 0;
+}
+
+function compareValues(a: string | number, b: string | number): number {
+  if (typeof a === 'string' && typeof b === 'string') {
+    return a.localeCompare(b);
+  }
+  return Number(a) - Number(b);
+}
+
+function SortIcon({
+  active,
+  direction,
+}: {
+  active: boolean;
+  direction: SortDirection;
+}) {
+  const className = classNames(
+    'h-3 w-3 shrink-0',
+    active ? 'text-white' : 'text-stone-500',
+  );
+
+  if (!active) {
+    return <ArrowUpDown className={className} aria-hidden="true" />;
+  }
+
+  return direction === 'desc' ? (
+    <ArrowDown className={className} aria-hidden="true" />
+  ) : (
+    <ArrowUp className={className} aria-hidden="true" />
   );
 }
 
@@ -114,6 +148,32 @@ export default function PositionsTable({ positions, cash }: PositionsTableProps)
 
   const rows = positions ?? query.data?.positions ?? [];
   const cashValue = cash ?? query.data?.cash ?? 0;
+
+  // Sorting: no sort by default (keeps the order returned by the API). The
+  // first click on a header sorts descending, the next click flips to ascending.
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDirection((prev) => (prev === 'desc' ? 'asc' : 'desc'));
+    } else {
+      setSortKey(key);
+      setSortDirection('desc');
+    }
+  };
+
+  const sortedRows = useMemo(() => {
+    if (!sortKey) return rows;
+    const sorted = [...rows].sort((a, b) => {
+      const result = compareValues(
+        getSortValue(a, sortKey),
+        getSortValue(b, sortKey),
+      );
+      return sortDirection === 'desc' ? -result : result;
+    });
+    return sorted;
+  }, [rows, sortKey, sortDirection]);
 
   if (shouldFetch && query.isLoading) {
     return (
@@ -154,21 +214,27 @@ export default function PositionsTable({ positions, cash }: PositionsTableProps)
                     column.align === 'right' ? 'text-right' : 'text-left',
                   )}
                 >
-                  <span
+                  <button
+                    type="button"
+                    onClick={() => handleSort(column.key)}
                     className={classNames(
-                      'inline-flex items-center gap-1',
+                      'inline-flex items-center gap-1 transition-colors hover:text-white',
                       column.align === 'right' ? 'flex-row-reverse' : '',
+                      sortKey === column.key ? 'text-white' : 'text-stone-400',
                     )}
                   >
                     {column.label}
-                    <SortChevron />
-                  </span>
+                    <SortIcon
+                      active={sortKey === column.key}
+                      direction={sortDirection}
+                    />
+                  </button>
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {rows.map((position, index) => {
+            {sortedRows.map((position, index) => {
               const allocation = position.allocation ?? 0;
               return (
                 <tr
