@@ -11,7 +11,7 @@ import { InvestmentService } from './investment.service';
 import { GetCurrentUserId } from '../auth/decorators/get-current-user-id.decorator';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { IBKRCsvValidator } from './validators/ibkr-csv.validator';
-import { PositionDto } from './dtos/position.dto';
+import { PortfolioDto } from './dtos/position.dto';
 
 @Controller('investment')
 export class InvestmentController {
@@ -36,9 +36,7 @@ export class InvestmentController {
   }
 
   @Get('positions')
-  getPositions(
-    @GetCurrentUserId() userId: string,
-  ): Promise<PositionDto[]> {
+  getPositions(@GetCurrentUserId() userId: string): Promise<PortfolioDto> {
     return this.investmentService.getUserPositions(userId);
   }
 }

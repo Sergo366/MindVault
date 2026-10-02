@@ -3,13 +3,16 @@ import * as crypto from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { StatementRecord } from './entities/statement-record.entity';
-import { PositionDto } from './dtos/position.dto';
+import { PortfolioDto, PositionDto } from './dtos/position.dto';
 
 // IBKR labels these columns slightly differently between export versions, so we
 // try a few candidate keys until one of them has a value.
 const SYMBOL_KEYS = ['Symbol', 'symbol'];
 const QUANTITY_KEYS = ['Quantity', 'quantity'];
 const TRADE_PRICE_KEYS = ['Trades Price', 'Trade Price', 'Price', 'tradePrice'];
+
+// The "Cash Report" section is stored under this header.
+const CASH_REPORT_SECTION = 'Cash Report';
 
 interface AggregatedPosition {
   ticker: string;
@@ -115,17 +118,17 @@ export class InvestmentService {
   }
 
   /**
-   * Builds the current portfolio positions for a single user from their
-   * uploaded IBKR "Trades" statement rows.
+   * Builds the current portfolio for a single user from their uploaded IBKR
+   * "Trades" statement rows, plus the free cash balance.
    *
    * Notes / simplifications:
    * - Positions are aggregated per ticker (no FIFO lot tracking). Quantity is
    *   the net of buys and sells; avgPrice is the weighted average of BUY trades.
    * - Fully closed positions (net quantity === 0) are omitted.
-   * - Everything that needs a *current* market price is returned as null,
-   *   because there is no quotes API yet. See the NOTE below.
+   * - `allocation` is currently weighted by cost basis, because there is no
+   *   quotes API yet. Once live prices exist it should use marketValue.
    */
-  async getUserPositions(userId: string): Promise<PositionDto[]> {
+  async getUserPositions(userId: string): Promise<PortfolioDto> {
     const records = await this.statementRecordRepository.find({
       where: { userId, section: 'Trades' },
       order: { createdAt: 'ASC' },
@@ -159,6 +162,19 @@ export class InvestmentService {
       }
     }
 
+    // First pass: total cost basis of open positions, combined with cash it
+    // becomes the denominator for the allocation column.
+    let positionsCostBasis = 0;
+    for (const position of positions.values()) {
+      if (position.quantity === 0) continue;
+      const avgPrice =
+        position.buyQuantity > 0 ? position.buyCost / position.buyQuantity : 0;
+      positionsCostBasis += position.quantity * avgPrice;
+    }
+
+    const cash = await this.getCashBalance(userId);
+    const totalValue = positionsCostBasis + cash;
+
     const result: PositionDto[] = [];
 
     for (const position of positions.values()) {
@@ -168,30 +184,79 @@ export class InvestmentService {
       const avgPrice =
         position.buyQuantity > 0 ? position.buyCost / position.buyQuantity : 0;
       const costBasis = position.quantity * avgPrice;
+      const allocation =
+        totalValue > 0 ? (costBasis / totalValue) * 100 : 0;
 
       // -------------------------------------------------------------------
       // NOTE: There is no market-data / quotes provider yet, so every field
-      // that depends on the *current* market price is returned as null and the
-      // client renders it as "—". Once a quotes API is wired up, compute and
-      // fill in: price, changePercent, dailyPnl, marketValue, unrealizedPnl,
-      // unrealizedPnlAllocation.
+      // that depends on the *current* market price is returned as 0. Once a
+      // quotes API is wired up, compute and fill in: price, changePercent,
+      // dailyPnl, marketValue, unrealizedPnl. `allocation` should then be
+      // calculated from marketValue instead of costBasis.
       // -------------------------------------------------------------------
       result.push({
         ticker: position.ticker,
         name: position.ticker, // no company-name source available yet
         quantity: this.round(position.quantity),
-        price: null,
-        changePercent: null,
-        dailyPnl: null,
+        price: 0,
+        changePercent: 0,
+        dailyPnl: 0,
         avgPrice: this.round(avgPrice),
         costBasis: this.round(costBasis),
-        marketValue: null,
-        unrealizedPnl: null,
-        unrealizedPnlAllocation: null,
+        marketValue: 0,
+        unrealizedPnl: 0,
+        allocation: this.round(allocation),
       });
     }
 
-    return result;
+    // Show the largest positions first.
+    result.sort((a, b) => b.allocation - a.allocation);
+
+    return {
+      positions: result,
+      cash: this.round(cash),
+      totalValue: this.round(totalValue),
+    };
+  }
+
+  /**
+   * Extracts the cash balance from the user's IBKR "Cash Report" rows.
+   *
+   * IBKR cash reports vary between export versions and account types, so this
+   * looks for a row whose description mentions "ending cash" and takes the
+   * first non-zero numeric column on that row. Returns 0 when nothing matches.
+   */
+  private async getCashBalance(userId: string): Promise<number> {
+    const records = await this.statementRecordRepository.find({
+      where: { userId, section: CASH_REPORT_SECTION },
+      order: { createdAt: 'ASC' },
+    });
+
+    // Prefer the most recent statement if several were uploaded.
+    for (let i = records.length - 1; i >= 0; i--) {
+      const data = (records[i].rawData ?? {}) as Record<string, unknown>;
+      const values = Object.values(data);
+      const rowText = values
+        .map((value) => String(value))
+        .join(' ')
+        .toLowerCase();
+
+      if (
+        !rowText.includes('ending cash') &&
+        !rowText.includes('endingcash')
+      ) {
+        continue;
+      }
+
+      for (const value of values) {
+        const parsed = this.parseNumber(value);
+        if (parsed !== 0) {
+          return parsed;
+        }
+      }
+    }
+
+    return 0;
   }
 
   /**

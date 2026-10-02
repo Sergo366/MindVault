@@ -15,11 +15,12 @@ export default function InvestmentsPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
-  const { data: positions, isLoading, isError, refetch } = usePositions();
+  const { data: portfolio, isLoading, isError, refetch } = usePositions();
 
+  const positions = portfolio?.positions ?? [];
   // The table / empty state is driven by real data fetched from
   // GET /investment/positions (via react-query).
-  const hasData = !!positions && positions.length > 0;
+  const hasData = positions.length > 0;
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -144,7 +145,7 @@ export default function InvestmentsPage() {
           </label>
         </div>
       ) : (
-        <PositionsTable positions={positions} />
+        <PositionsTable positions={positions} cash={portfolio?.cash} />
       )}
     </div>
   );

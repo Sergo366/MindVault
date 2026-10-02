@@ -17,12 +17,20 @@ export interface Position {
   // Market-price dependent (0 until a quotes API exists)
   marketValue: number;
   unrealizedPnl: number;
-  unrealizedPnlAllocation: number;
+
+  // Share of this position in the total portfolio value, in percent.
+  allocation: number;
+}
+
+export interface Portfolio {
+  positions: Position[];
+  cash: number;
+  totalValue: number;
 }
 
 export const investmentApi = {
-  getPositions: async (): Promise<Position[]> => {
-    const response = await apiClient.get<Position[]>('/investment/positions');
+  getPositions: async (): Promise<Portfolio> => {
+    const response = await apiClient.get<Portfolio>('/investment/positions');
     return response.data;
   },
 };
