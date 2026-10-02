@@ -3,6 +3,20 @@ import * as crypto from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { StatementRecord } from './entities/statement-record.entity';
+import { PositionDto } from './dtos/position.dto';
+
+// IBKR labels these columns slightly differently between export versions, so we
+// try a few candidate keys until one of them has a value.
+const SYMBOL_KEYS = ['Symbol', 'symbol'];
+const QUANTITY_KEYS = ['Quantity', 'quantity'];
+const TRADE_PRICE_KEYS = ['Trades Price', 'Trade Price', 'Price', 'tradePrice'];
+
+interface AggregatedPosition {
+  ticker: string;
+  quantity: number;
+  buyCost: number;
+  buyQuantity: number;
+}
 
 @Injectable()
 export class InvestmentService {
@@ -98,6 +112,122 @@ export class InvestmentService {
       message: `Successfully processed ${totalParsed} records`,
       total: totalParsed,
     };
+  }
+
+  /**
+   * Builds the current portfolio positions for a single user from their
+   * uploaded IBKR "Trades" statement rows.
+   *
+   * Notes / simplifications:
+   * - Positions are aggregated per ticker (no FIFO lot tracking). Quantity is
+   *   the net of buys and sells; avgPrice is the weighted average of BUY trades.
+   * - Fully closed positions (net quantity === 0) are omitted.
+   * - Everything that needs a *current* market price is returned as null,
+   *   because there is no quotes API yet. See the NOTE below.
+   */
+  async getUserPositions(userId: string): Promise<PositionDto[]> {
+    const records = await this.statementRecordRepository.find({
+      where: { userId, section: 'Trades' },
+      order: { createdAt: 'ASC' },
+    });
+
+    const positions = new Map<string, AggregatedPosition>();
+
+    for (const record of records) {
+      const data = (record.rawData ?? {}) as Record<string, unknown>;
+
+      const ticker = String(this.readField(data, SYMBOL_KEYS) ?? '').trim();
+      if (!ticker) continue;
+
+      const quantity = this.parseNumber(this.readField(data, QUANTITY_KEYS));
+      const tradePrice = this.parseNumber(
+        this.readField(data, TRADE_PRICE_KEYS),
+      );
+
+      let position = positions.get(ticker);
+      if (!position) {
+        position = { ticker, quantity: 0, buyCost: 0, buyQuantity: 0 };
+        positions.set(ticker, position);
+      }
+
+      position.quantity += quantity;
+
+      // Only buys (positive quantity) feed the average-cost calculation.
+      if (quantity > 0) {
+        position.buyCost += quantity * tradePrice;
+        position.buyQuantity += quantity;
+      }
+    }
+
+    const result: PositionDto[] = [];
+
+    for (const position of positions.values()) {
+      // A position that was fully closed out is not a holding.
+      if (position.quantity === 0) continue;
+
+      const avgPrice =
+        position.buyQuantity > 0 ? position.buyCost / position.buyQuantity : 0;
+      const costBasis = position.quantity * avgPrice;
+
+      // -------------------------------------------------------------------
+      // NOTE: There is no market-data / quotes provider yet, so every field
+      // that depends on the *current* market price is returned as null and the
+      // client renders it as "—". Once a quotes API is wired up, compute and
+      // fill in: price, changePercent, dailyPnl, marketValue, unrealizedPnl,
+      // unrealizedPnlAllocation.
+      // -------------------------------------------------------------------
+      result.push({
+        ticker: position.ticker,
+        name: position.ticker, // no company-name source available yet
+        quantity: this.round(position.quantity),
+        price: null,
+        changePercent: null,
+        dailyPnl: null,
+        avgPrice: this.round(avgPrice),
+        costBasis: this.round(costBasis),
+        marketValue: null,
+        unrealizedPnl: null,
+        unrealizedPnlAllocation: null,
+      });
+    }
+
+    return result;
+  }
+
+  /**
+   * Returns the first non-empty value among the given candidate keys, or
+   * undefined if none of them are present.
+   */
+  private readField(
+    data: Record<string, unknown>,
+    keys: string[],
+  ): unknown {
+    for (const key of keys) {
+      const value = data[key];
+      if (
+        value !== undefined &&
+        value !== null &&
+        String(value).trim() !== ''
+      ) {
+        return value;
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Parses a numeric cell, tolerating thousands separators and empty values.
+   */
+  private parseNumber(value: unknown): number {
+    if (value === null || value === undefined) return 0;
+    const cleaned = String(value).replace(/,/g, '').trim();
+    if (!cleaned) return 0;
+    const parsed = Number(cleaned);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  private round(value: number): number {
+    return Math.round(value * 100) / 100;
   }
 
   // Simple CSV line parser that handles commas inside quotes

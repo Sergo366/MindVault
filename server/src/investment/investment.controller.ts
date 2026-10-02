@@ -1,5 +1,6 @@
 import {
   Controller,
+  Get,
   Post,
   UseInterceptors,
   UploadedFiles,
@@ -10,6 +11,7 @@ import { InvestmentService } from './investment.service';
 import { GetCurrentUserId } from '../auth/decorators/get-current-user-id.decorator';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { IBKRCsvValidator } from './validators/ibkr-csv.validator';
+import { PositionDto } from './dtos/position.dto';
 
 @Controller('investment')
 export class InvestmentController {
@@ -31,5 +33,12 @@ export class InvestmentController {
     @GetCurrentUserId() userId: string,
   ) {
     return this.investmentService.uploadStatementFiles(files, userId);
+  }
+
+  @Get('positions')
+  getPositions(
+    @GetCurrentUserId() userId: string,
+  ): Promise<PositionDto[]> {
+    return this.investmentService.getUserPositions(userId);
   }
 }
