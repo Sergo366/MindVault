@@ -14,6 +14,10 @@ const TRADE_PRICE_KEYS = ['Trades Price', 'Trade Price', 'Price', 'tradePrice'];
 // The "Cash Report" section is stored under this header.
 const CASH_REPORT_SECTION = 'Cash Report';
 
+// IBKR uses symbols like "USD.PLN" / "EUR.USD" for currency pairs. These are
+// not portfolio positions, so they are filtered out of the response.
+const CURRENCY_PAIR_PATTERN = /^[A-Z]{3}\.[A-Z]{3}$/;
+
 interface AggregatedPosition {
   ticker: string;
   quantity: number;
@@ -125,6 +129,8 @@ export class InvestmentService {
    * - Positions are aggregated per ticker (no FIFO lot tracking). Quantity is
    *   the net of buys and sells; avgPrice is the weighted average of BUY trades.
    * - Fully closed positions (net quantity === 0) are omitted.
+   * - Currency-pair symbols (e.g. "USD.PLN") are skipped: they are FX
+   *   conversions, not portfolio holdings.
    * - `allocation` is currently weighted by cost basis, because there is no
    *   quotes API yet. Once live prices exist it should use marketValue.
    */
@@ -141,6 +147,9 @@ export class InvestmentService {
 
       const ticker = String(this.readField(data, SYMBOL_KEYS) ?? '').trim();
       if (!ticker) continue;
+
+      // Skip IBKR currency-pair rows (e.g. "USD.PLN") - they are not holdings.
+      if (CURRENCY_PAIR_PATTERN.test(ticker)) continue;
 
       const quantity = this.parseNumber(this.readField(data, QUANTITY_KEYS));
       const tradePrice = this.parseNumber(
