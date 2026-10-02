@@ -7,12 +7,37 @@ import { PortfolioDto, PositionDto } from './dtos/position.dto';
 
 // IBKR labels these columns slightly differently between export versions, so we
 // try a few candidate keys until one of them has a value.
+//
+// A real "Trades" row looks like this (only the fields we care about):
+//   {
+//     "Symbol": "VOO",
+//     "Quantity": "0.0457",
+//     "T. Price": "683.24",   <- fill price
+//     "Basis": "31.255324295",<- cost incl. commission
+//     "C. Price": "685.46",   <- day close price (NOT the fill price)
+//     "Currency": "USD",
+//     "Comm/Fee": "-0.031256295",
+//     ...
+//   }
 const SYMBOL_KEYS = ['Symbol', 'symbol'];
 const QUANTITY_KEYS = ['Quantity', 'quantity'];
-const TRADE_PRICE_KEYS = ['Trades Price', 'Trade Price', 'Price', 'tradePrice'];
+// The fill price is stored under "T. Price" (not "Price"); "C. Price" is the
+// close price and must NOT be used as the trade price.
+const TRADE_PRICE_KEYS = [
+  'T. Price',
+  'Trade Price',
+  'Trades Price',
+  'Price',
+  'tradePrice',
+];
+// "Basis" is the per-trade acquisition cost *including* commissions.
+const BASIS_KEYS = ['Basis', 'basis'];
 
 // The "Cash Report" section is stored under this header.
 const CASH_REPORT_SECTION = 'Cash Report';
+const CASH_SUMMARY_KEY = 'Currency Summary';
+const CASH_TOTAL_KEY = 'Total';
+const CASH_CURRENCY_KEY = 'Currency';
 
 // IBKR uses symbols like "USD.PLN" / "EUR.USD" for currency pairs. These are
 // not portfolio positions, so they are filtered out of the response.
@@ -129,6 +154,8 @@ export class InvestmentService {
    * - Positions are aggregated per ticker (no FIFO lot tracking). Quantity is
    *   the net of buys and sells; avgPrice is the weighted average of BUY trades.
    * - Fully closed positions (net quantity === 0) are omitted.
+   * - Cost is taken from the IBKR "Basis" column when present (it already
+   *   includes commissions), falling back to Quantity x "T. Price".
    * - Currency-pair symbols (e.g. "USD.PLN") are skipped: they are FX
    *   conversions, not portfolio holdings.
    * - `allocation` is currently weighted by cost basis, because there is no
@@ -152,9 +179,6 @@ export class InvestmentService {
       if (CURRENCY_PAIR_PATTERN.test(ticker)) continue;
 
       const quantity = this.parseNumber(this.readField(data, QUANTITY_KEYS));
-      const tradePrice = this.parseNumber(
-        this.readField(data, TRADE_PRICE_KEYS),
-      );
 
       let position = positions.get(ticker);
       if (!position) {
@@ -166,7 +190,20 @@ export class InvestmentService {
 
       // Only buys (positive quantity) feed the average-cost calculation.
       if (quantity > 0) {
-        position.buyCost += quantity * tradePrice;
+        const basisValue = this.readField(data, BASIS_KEYS);
+        const tradePrice = this.parseNumber(
+          this.readField(data, TRADE_PRICE_KEYS),
+        );
+
+        // "Basis" already includes the commission, so prefer it when it is a
+        // usable positive number; otherwise fall back to quantity x fill price.
+        const basis =
+          basisValue !== undefined
+            ? Math.abs(this.parseNumber(basisValue))
+            : 0;
+        const cost = basis > 0 ? basis : quantity * tradePrice;
+
+        position.buyCost += cost;
         position.buyQuantity += quantity;
       }
     }
@@ -193,8 +230,7 @@ export class InvestmentService {
       const avgPrice =
         position.buyQuantity > 0 ? position.buyCost / position.buyQuantity : 0;
       const costBasis = position.quantity * avgPrice;
-      const allocation =
-        totalValue > 0 ? (costBasis / totalValue) * 100 : 0;
+      const allocation = totalValue > 0 ? (costBasis / totalValue) * 100 : 0;
 
       // -------------------------------------------------------------------
       // NOTE: There is no market-data / quotes provider yet, so every field
@@ -206,7 +242,7 @@ export class InvestmentService {
       result.push({
         ticker: position.ticker,
         name: position.ticker, // no company-name source available yet
-        quantity: this.round(position.quantity),
+        quantity: this.roundQuantity(position.quantity),
         price: 0,
         changePercent: 0,
         dailyPnl: 0,
@@ -229,11 +265,17 @@ export class InvestmentService {
   }
 
   /**
-   * Extracts the cash balance from the user's IBKR "Cash Report" rows.
+   * Extracts the free cash balance from the user's IBKR "Cash Report" rows.
    *
-   * IBKR cash reports vary between export versions and account types, so this
-   * looks for a row whose description mentions "ending cash" and takes the
-   * first non-zero numeric column on that row. Returns 0 when nothing matches.
+   * Rows look like:
+   *   { "Cash Report": "Cash Report", "Header": "Data",
+   *     "Currency Summary": "Ending Cash", "Currency": "Base Currency",
+   *     "Total": "1120", "Securities": "1120", "Futures": "0" }
+   *
+   * Multi-currency accounts contain one "Ending Cash" row per currency plus a
+   * "Base Currency" total row, so the base-currency row is preferred to avoid
+   * mixing currencies (e.g. PLN cash into a USD portfolio). Returns 0 when no
+   * ending-cash row exists.
    */
   private async getCashBalance(userId: string): Promise<number> {
     const records = await this.statementRecordRepository.find({
@@ -242,47 +284,40 @@ export class InvestmentService {
     });
 
     // Prefer the most recent statement if several were uploaded.
+    let fallback = 0;
+
     for (let i = records.length - 1; i >= 0; i--) {
       const data = (records[i].rawData ?? {}) as Record<string, unknown>;
-      const values = Object.values(data);
-      const rowText = values
-        .map((value) => String(value))
-        .join(' ')
-        .toLowerCase();
 
-      if (
-        !rowText.includes('ending cash') &&
-        !rowText.includes('endingcash')
-      ) {
-        continue;
+      const summary = String(data[CASH_SUMMARY_KEY] ?? '').toLowerCase();
+      if (!summary.includes('ending cash')) continue;
+
+      const total = this.parseNumber(data[CASH_TOTAL_KEY]);
+      const currency = String(data[CASH_CURRENCY_KEY] ?? '').toLowerCase();
+
+      // The base-currency summary is the one that reconciles with the rest of
+      // the (USD-denominated) portfolio, so take it straight away.
+      if (currency.includes('base')) {
+        return total;
       }
 
-      for (const value of values) {
-        const parsed = this.parseNumber(value);
-        if (parsed !== 0) {
-          return parsed;
-        }
+      // Otherwise remember the first per-currency value we saw as a fallback.
+      if (fallback === 0) {
+        fallback = total;
       }
     }
 
-    return 0;
+    return fallback;
   }
 
   /**
    * Returns the first non-empty value among the given candidate keys, or
    * undefined if none of them are present.
    */
-  private readField(
-    data: Record<string, unknown>,
-    keys: string[],
-  ): unknown {
+  private readField(data: Record<string, unknown>, keys: string[]): unknown {
     for (const key of keys) {
       const value = data[key];
-      if (
-        value !== undefined &&
-        value !== null &&
-        String(value).trim() !== ''
-      ) {
+      if (value !== undefined && value !== null && String(value).trim() !== '') {
         return value;
       }
     }
@@ -302,6 +337,12 @@ export class InvestmentService {
 
   private round(value: number): number {
     return Math.round(value * 100) / 100;
+  }
+
+  // Quantities can be fractional (e.g. 0.0457 shares), so they need more
+  // precision than money values.
+  private roundQuantity(value: number): number {
+    return Math.round(value * 1e6) / 1e6;
   }
 
   // Simple CSV line parser that handles commas inside quotes
