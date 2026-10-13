@@ -1,13 +1,13 @@
 import { Exclude } from 'class-transformer';
 import {
   Entity,
-  PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
   UpdateDateColumn,
   OneToMany,
 } from 'typeorm';
 import { StatementRecord } from '../../investment/entities/statement-record.entity';
+import { BaseEntity } from '../../common/entities/base.entity';
 
 export enum Gender {
   MALE = 'male',
@@ -15,10 +15,7 @@ export enum Gender {
 }
 
 @Entity()
-export class User {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
-
+export class User extends BaseEntity {
   @Column({ unique: true })
   email: string;
 
@@ -46,9 +43,6 @@ export class User {
 
   @Column({ type: 'varchar', nullable: true })
   location: string | null;
-
-  @OneToMany(() => StatementRecord, (record) => record.user)
-  statementRecords: StatementRecord[];
 
   @OneToMany(() => StatementRecord, (record) => record.user)
   statementRecords: StatementRecord[];

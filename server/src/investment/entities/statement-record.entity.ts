@@ -1,6 +1,5 @@
 import {
   Entity,
-  PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
   UpdateDateColumn,
@@ -8,12 +7,10 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
+import { BaseEntity } from '../../common/entities/base.entity';
 
 @Entity('statement_records')
-export class StatementRecord {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
-
+export class StatementRecord extends BaseEntity {
   @Column({ type: 'uuid' })
   userId: string;
 
