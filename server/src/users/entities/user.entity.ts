@@ -48,11 +48,17 @@ export class User {
   @Column({ type: 'varchar', nullable: true })
   location: string | null;
 
-  @OneToMany(() => StatementRecord, (record) => record.user)
-  statementRecords: StatementRecord[];
+  @OneToMany(() => StatementRecord, (record) => record.user, {
+    cascade: true,
+    nullable: true,
+  })
+  statementRecords: StatementRecord[] | null;
 
-  @OneToMany(() => Portfolio, (portfolio) => portfolio.user)
-  portfolios: Portfolio[];
+  @OneToMany(() => Portfolio, (portfolio) => portfolio.user, {
+    cascade: true,
+    nullable: true,
+  })
+  portfolios: Portfolio[] | null;
 
   @CreateDateColumn()
   createdAt: Date;
