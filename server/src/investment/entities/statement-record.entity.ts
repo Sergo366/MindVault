@@ -24,20 +24,20 @@ export class StatementRecord {
   @JoinColumn({ name: 'userId' })
   user: User;
 
-  // Nullable: existing rows predate portfolios, and uploads may not always be
-  // assigned to one. Kept as an explicit column so rows can be filtered or
-  // assigned directly (where: { portfolioId }) without loading the relation.
-  @Column({ type: 'uuid', nullable: true })
-  portfolioId: string | null;
+  // Required: records are only ever imported into an existing portfolio, so
+  // this column is NOT NULL. The portfolio must be created before importing
+  // (see uploadStatementFiles).
+  @Column({ type: 'uuid' })
+  portfolioId: string;
 
   // Many-to-one only: Portfolio has no knowledge of its statement records,
   // so there is no inverse (OneToMany) side to point at.
   @ManyToOne(() => Portfolio, {
     onDelete: 'CASCADE',
-    nullable: true,
+    nullable: false,
   })
   @JoinColumn({ name: 'portfolioId' })
-  portfolio: Portfolio | null;
+  portfolio: Portfolio;
 
   // The section from IBKR CSV (e.g., 'Trades', 'Dividends', 'Cash Report')
   @Column()
