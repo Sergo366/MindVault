@@ -129,14 +129,14 @@ export default function Header() {
                     <HeadlessMenu.Item>
                       {({ active }) => (
                         <Link
-                          href="/settings/investment"
+                          href="/settings/portfolios"
                           className={classNames(
                             active ? MENU_STYLES.itemActive : MENU_STYLES.itemInactive,
                             MENU_STYLES.item
                           )}
                         >
                           <Settings className={classNames(MENU_STYLES.icon, active ? MENU_STYLES.iconActive : MENU_STYLES.iconInactive)} />
-                          Investment settings
+                          Portfolios
                         </Link>
                       )}
                     </HeadlessMenu.Item>
