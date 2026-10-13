@@ -32,10 +32,9 @@ export class StatementRecord {
 
   @ManyToOne(() => Portfolio, (portfolio) => portfolio.statementRecords, {
     onDelete: 'CASCADE',
-    nullable: true,
   })
   @JoinColumn({ name: 'portfolioId' })
-  portfolio: Portfolio | null;
+  portfolio: Portfolio;
 
   // The section from IBKR CSV (e.g., 'Trades', 'Dividends', 'Cash Report')
   @Column()
