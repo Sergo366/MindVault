@@ -8,6 +8,7 @@ import {
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
 import { PrimaryColumnV7 } from '../../common/decorators/primary-column-v7.decorator';
+import { Portfolio } from './portfolio.entity';
 
 @Entity('statement_records')
 export class StatementRecord {
@@ -22,6 +23,12 @@ export class StatementRecord {
   })
   @JoinColumn({ name: 'userId' })
   user: User;
+
+  @ManyToOne(() => Portfolio, (portfolio) => portfolio.statementRecords, {
+    onDelete: 'CASCADE',
+  })
+  @JoinColumn({ name: 'portfolioId' })
+  portfolio: Portfolio;
 
   // The section from IBKR CSV (e.g., 'Trades', 'Dividends', 'Cash Report')
   @Column()
