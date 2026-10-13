@@ -3,14 +3,12 @@ import {
   Entity,
   JoinColumn,
   ManyToOne,
-  OneToMany,
   UpdateDateColumn,
   Column,
 } from 'typeorm';
 import { PrimaryColumnV7 } from '../../common/decorators/primary-column-v7.decorator';
 import { IsString } from 'class-validator';
 import { User } from '../../users/entities/user.entity';
-import { StatementRecord } from './statement-record.entity';
 
 @Entity()
 export class Portfolio {
@@ -30,9 +28,6 @@ export class Portfolio {
   })
   @JoinColumn({ name: 'userId' })
   user: User;
-
-  @OneToMany(() => StatementRecord, (record) => record.portfolio)
-  statementRecords: StatementRecord[];
 
   @CreateDateColumn()
   createdAt: Date;

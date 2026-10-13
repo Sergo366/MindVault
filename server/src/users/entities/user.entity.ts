@@ -8,6 +8,7 @@ import {
 } from 'typeorm';
 import { StatementRecord } from '../../investment/entities/statement-record.entity';
 import { PrimaryColumnV7 } from '../../common/decorators/primary-column-v7.decorator';
+import { Portfolio } from '../../investment/entities/portfolio.entity';
 
 export enum Gender {
   MALE = 'male',
@@ -49,6 +50,9 @@ export class User {
 
   @OneToMany(() => StatementRecord, (record) => record.user)
   statementRecords: StatementRecord[];
+
+  @OneToMany(() => Portfolio, (portfolio) => portfolio.user)
+  portfolios: Portfolio[];
 
   @CreateDateColumn()
   createdAt: Date;
