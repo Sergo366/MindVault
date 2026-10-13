@@ -1,4 +1,4 @@
-import { BeforeInsert, ColumnOptions, PrimaryColumn } from 'typeorm';
+import { BeforeInsert, PrimaryColumn, PrimaryColumnOptions } from 'typeorm';
 import { v7 as uuidv7 } from 'uuid';
 
 /**
@@ -26,7 +26,9 @@ import { v7 as uuidv7 } from 'uuid';
  *     // ...
  *   }
  */
-export function PrimaryColumnV7(options?: ColumnOptions): PropertyDecorator {
+export function PrimaryColumnV7(
+  options?: PrimaryColumnOptions,
+): PropertyDecorator {
   return (target: object, propertyKey: string | symbol) => {
     // 1. Register the property as a UUID primary column.
     PrimaryColumn('uuid', options)(target, propertyKey);
