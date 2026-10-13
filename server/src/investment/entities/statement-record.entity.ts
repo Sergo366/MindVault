@@ -24,11 +24,18 @@ export class StatementRecord {
   @JoinColumn({ name: 'userId' })
   user: User;
 
+  // Nullable: existing rows predate portfolios, and uploads may not always be
+  // assigned to one. Kept as an explicit column so it can be filtered/assigned
+  // directly (where: { portfolioId }) without loading the relation.
+  @Column({ type: 'uuid', nullable: true })
+  portfolioId: string | null;
+
   @ManyToOne(() => Portfolio, (portfolio) => portfolio.statementRecords, {
     onDelete: 'CASCADE',
+    nullable: true,
   })
   @JoinColumn({ name: 'portfolioId' })
-  portfolio: Portfolio;
+  portfolio: Portfolio | null;
 
   // The section from IBKR CSV (e.g., 'Trades', 'Dividends', 'Cash Report')
   @Column()
