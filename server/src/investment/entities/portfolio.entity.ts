@@ -1,5 +1,8 @@
 import { Entity } from 'typeorm';
-import { BaseEntity } from '../../common/entities/base.entity';
+import { PrimaryColumnV7 } from '../../common/decorators/primary-column-v7.decorator';
 
 @Entity()
-export class Portfolio extends BaseEntity {}
+export class Portfolio {
+  @PrimaryColumnV7()
+  id: string;
+}

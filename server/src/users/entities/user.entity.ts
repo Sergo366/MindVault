@@ -7,7 +7,7 @@ import {
   OneToMany,
 } from 'typeorm';
 import { StatementRecord } from '../../investment/entities/statement-record.entity';
-import { BaseEntity } from '../../common/entities/base.entity';
+import { PrimaryColumnV7 } from '../../common/decorators/primary-column-v7.decorator';
 
 export enum Gender {
   MALE = 'male',
@@ -15,7 +15,10 @@ export enum Gender {
 }
 
 @Entity()
-export class User extends BaseEntity {
+export class User {
+  @PrimaryColumnV7()
+  id: string;
+
   @Column({ unique: true })
   email: string;
 

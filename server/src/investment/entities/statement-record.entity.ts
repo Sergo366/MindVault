@@ -7,10 +7,13 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
-import { BaseEntity } from '../../common/entities/base.entity';
+import { PrimaryColumnV7 } from '../../common/decorators/primary-column-v7.decorator';
 
 @Entity('statement_records')
-export class StatementRecord extends BaseEntity {
+export class StatementRecord {
+  @PrimaryColumnV7()
+  id: string;
+
   @Column({ type: 'uuid' })
   userId: string;
 
