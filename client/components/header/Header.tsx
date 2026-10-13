@@ -129,7 +129,7 @@ export default function Header() {
                     <HeadlessMenu.Item>
                       {({ active }) => (
                         <Link
-                          href="/settings/portfolios"
+                          href="/settings/portfolio"
                           className={classNames(
                             active ? MENU_STYLES.itemActive : MENU_STYLES.itemInactive,
                             MENU_STYLES.item

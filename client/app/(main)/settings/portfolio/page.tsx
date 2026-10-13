@@ -1,6 +1,6 @@
 import React from 'react';
 
-const PortfoliosSettings = () => {
+const PortfolioSettings = () => {
   return (
     <div>
       Portfolios Settings
@@ -8,4 +8,4 @@ const PortfoliosSettings = () => {
   );
 };
 
-export default PortfoliosSettings;
+export default PortfolioSettings;
