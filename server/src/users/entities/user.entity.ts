@@ -50,6 +50,9 @@ export class User {
   @OneToMany(() => StatementRecord, (record) => record.user)
   statementRecords: StatementRecord[];
 
+  @OneToMany(() => StatementRecord, (record) => record.user)
+  statementRecords: StatementRecord[];
+
   @CreateDateColumn()
   createdAt: Date;
 
