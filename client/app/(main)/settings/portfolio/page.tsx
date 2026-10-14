@@ -143,8 +143,8 @@ export default function PortfolioSettingsPage() {
           {/* Full-width add-portfolio bar. Clicking it swaps in an editable row
               on the same width, instead of opening a small square card. */}
           {isAdding ? (
-            <div className="flex w-full items-center gap-2 rounded-2xl border border-emerald-400/40 bg-emerald-400/[0.06] px-4 py-3">
-              <Plus className="h-4 w-4 shrink-0 text-emerald-300/80" />
+            <div className="flex w-full items-center gap-2 rounded-2xl border border-primary/40 bg-primary/[0.06] px-4 py-3">
+              <Plus className="h-4 w-4 shrink-0 text-primary/80" />
               <input
                 value={newName}
                 onChange={(event) => setNewName(event.target.value)}
@@ -155,13 +155,13 @@ export default function PortfolioSettingsPage() {
                 placeholder="Portfolio name"
                 autoFocus
                 disabled={createMutation.isPending}
-                className="min-w-0 flex-1 border-none bg-transparent text-sm text-white outline-none placeholder:text-stone-500 disabled:opacity-50"
+                className="min-w-0 flex-1 border-none bg-transparent text-sm text-white outline-none placeholder:text-stone-500 focus:border-primary/50 disabled:opacity-50"
               />
               <button
                 type="button"
                 onClick={handleCreate}
                 disabled={createMutation.isPending || !newName.trim()}
-                className="rounded-lg bg-emerald-400 px-4 py-1.5 text-sm font-medium text-stone-900 transition-colors hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-lg bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {createMutation.isPending ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -183,9 +183,9 @@ export default function PortfolioSettingsPage() {
             <button
               type="button"
               onClick={() => setIsAdding(true)}
-              className="group flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-white/15 bg-white/[0.01] py-3 text-stone-400 transition-all hover:border-emerald-400/40 hover:bg-emerald-400/[0.04] hover:text-emerald-300"
+              className="group flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-white/15 bg-white/[0.01] py-3 text-stone-400 transition-all hover:border-primary/40 hover:bg-primary/[0.04] hover:text-primary"
             >
-              <span className="flex h-6 w-6 items-center justify-center rounded-full border border-white/10 bg-white/5 transition-colors group-hover:border-emerald-400/40 group-hover:bg-emerald-400/10">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full border border-white/10 bg-white/5 transition-colors group-hover:border-primary/40 group-hover:bg-primary/10">
                 <Plus className="h-3.5 w-3.5" />
               </span>
               <span className="text-sm font-medium">Add portfolio</span>

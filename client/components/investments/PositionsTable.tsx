@@ -36,7 +36,7 @@ function formatChange(value: number | null | undefined): string {
 
 function pnlTextClass(value: number | null | undefined): string {
   if (value === null || value === undefined) return 'text-stone-500';
-  if (value > 0) return 'text-emerald-400';
+  if (value > 0) return 'text-primary';
   if (value < 0) return 'text-red-400';
   return 'text-stone-400';
 }
@@ -47,7 +47,7 @@ const DEFAULT_AVATAR_COLOR =
 const AVATAR_COLORS = [
   DEFAULT_AVATAR_COLOR,
   'from-violet-500/25 to-violet-500/5 text-violet-300 border-violet-400/20',
-  'from-emerald-500/25 to-emerald-500/5 text-emerald-300 border-emerald-400/20',
+  'from-indigo-500/25 to-indigo-500/5 text-indigo-300 border-indigo-400/20',
   'from-amber-500/25 to-amber-500/5 text-amber-300 border-amber-400/20',
   'from-rose-500/25 to-rose-500/5 text-rose-300 border-rose-400/20',
   'from-cyan-500/25 to-cyan-500/5 text-cyan-300 border-cyan-400/20',
@@ -354,10 +354,10 @@ export default function PositionsTable({ positions, cash }: PositionsTableProps)
       {/* Cash footer: shown as a value below the table, not a data row */}
       <div className="flex items-center justify-between border-t border-white/10 bg-white/[0.03] px-4 py-2.5">
         <div className="flex items-center gap-2 text-sm text-stone-400">
-          <Wallet className="h-4 w-4 text-emerald-400" />
+          <Wallet className="h-4 w-4 text-primary" />
           <span>Cash</span>
         </div>
-        <span className="text-sm font-semibold tabular-nums text-emerald-300">
+        <span className="text-sm font-semibold tabular-nums text-primary">
           {formatCurrency(cashValue)}
         </span>
       </div>

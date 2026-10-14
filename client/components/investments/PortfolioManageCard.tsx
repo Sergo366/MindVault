@@ -140,14 +140,14 @@ export function PortfolioManageCard({
             }}
             autoFocus
             disabled={isRenamePending}
-            className="min-w-0 flex-1 rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-sm text-white outline-none focus:border-emerald-400/50 disabled:opacity-50"
+            className="min-w-0 flex-1 rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-sm text-white outline-none focus:border-primary/50 disabled:opacity-50"
           />
           <button
             type="button"
             onClick={submitRename}
             disabled={isRenamePending}
             aria-label="Save name"
-            className="flex h-7 w-7 items-center justify-center rounded-md text-emerald-400 transition-colors hover:bg-emerald-400/10 disabled:opacity-50"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-primary transition-colors hover:bg-primary/10 disabled:opacity-50"
           >
             <Check className="h-4 w-4" />
           </button>
@@ -168,7 +168,7 @@ export function PortfolioManageCard({
           </div>
           <div
             className={classNames(
-              'mt-0.5 text-sm font-medium tabular-nums text-emerald-300',
+              'mt-0.5 text-sm font-medium tabular-nums text-primary',
               isRenamePending || isDeletePending ? 'opacity-60' : '',
             )}
           >
