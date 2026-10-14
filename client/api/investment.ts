@@ -60,6 +60,29 @@ export const investmentApi = {
     return response.data;
   },
 
+  createPortfolio: async (name: string): Promise<PortfolioSummary> => {
+    const response = await apiClient.post<PortfolioSummary>(
+      '/investment/portfolios',
+      { name },
+    );
+    return response.data;
+  },
+
+  updatePortfolio: async (
+    id: string,
+    name: string,
+  ): Promise<PortfolioSummary> => {
+    const response = await apiClient.patch<PortfolioSummary>(
+      `/investment/portfolios/${id}`,
+      { name },
+    );
+    return response.data;
+  },
+
+  deletePortfolio: async (id: string): Promise<void> => {
+    await apiClient.delete(`/investment/portfolios/${id}`);
+  },
+
   uploadStatements: async (files: File[]): Promise<UploadStatementsResult> => {
     const formData = new FormData();
     for (const file of files) {
