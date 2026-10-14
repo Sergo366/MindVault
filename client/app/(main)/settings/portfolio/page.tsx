@@ -118,27 +118,23 @@ export default function PortfolioSettingsPage() {
           </button>
         </div>
       ) : (
-        <div className="flex flex-col gap-4">
-          {portfolios.length > 0 && (
-            <div className="flex flex-wrap gap-4">
-              {portfolios.map((portfolio) => (
-                <PortfolioManageCard
-                  key={portfolio.id}
-                  portfolio={portfolio}
-                  onRename={handleRename}
-                  onDelete={handleDelete}
-                  isRenamePending={
-                    updateMutation.isPending &&
-                    updateMutation.variables?.id === portfolio.id
-                  }
-                  isDeletePending={
-                    deleteMutation.isPending &&
-                    deleteMutation.variables === portfolio.id
-                  }
-                />
-              ))}
-            </div>
-          )}
+        <div className="flex flex-col gap-3">
+          {portfolios.map((portfolio) => (
+            <PortfolioManageCard
+              key={portfolio.id}
+              portfolio={portfolio}
+              onRename={handleRename}
+              onDelete={handleDelete}
+              isRenamePending={
+                updateMutation.isPending &&
+                updateMutation.variables?.id === portfolio.id
+              }
+              isDeletePending={
+                deleteMutation.isPending &&
+                deleteMutation.variables === portfolio.id
+              }
+            />
+          ))}
 
           {/* Full-width add-portfolio bar. Clicking it swaps in an editable row
               on the same width, instead of opening a small square card. */}
