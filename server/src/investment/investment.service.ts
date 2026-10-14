@@ -1,9 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { FindOptionsWhere, In, Repository } from 'typeorm';
 import { StatementRecord } from './entities/statement-record.entity';
-import { PortfolioDto, PositionDto } from './dtos/position.dto';
+import { Portfolio } from './entities/portfolio.entity';
+import {
+  PortfolioDto,
+  PortfolioSummaryDto,
+  PositionDto,
+} from './dtos/position.dto';
 
 // IBKR labels these columns slightly differently between export versions, so we
 // try a few candidate keys until one of them has a value.
@@ -57,6 +62,8 @@ export class InvestmentService {
   constructor(
     @InjectRepository(StatementRecord)
     private readonly statementRecordRepository: Repository<StatementRecord>,
+    @InjectRepository(Portfolio)
+    private readonly portfolioRepository: Repository<Portfolio>,
   ) {}
 
   async uploadStatementFiles(files: Express.Multer.File[], userId: string) {
@@ -147,10 +154,46 @@ export class InvestmentService {
   }
 
   /**
-   * Builds the current portfolio for a single user from their uploaded IBKR
-   * "Trades" statement rows, plus the free cash balance.
+   * Lists the user's portfolios with their aggregate value (positions cost
+   * basis + cash), used to render the portfolio cards on the client.
+   */
+  async getUserPortfolios(userId: string): Promise<PortfolioSummaryDto[]> {
+    const portfolios = await this.portfolioRepository.find({
+      where: { userId },
+      order: { createdAt: 'ASC' },
+    });
+
+    const summaries: PortfolioSummaryDto[] = [];
+    for (const portfolio of portfolios) {
+      const totals = await this.buildPortfolio(userId, [portfolio.id]);
+      summaries.push({
+        id: portfolio.id,
+        name: portfolio.name,
+        cash: totals.cash,
+        totalValue: totals.totalValue,
+      });
+    }
+    return summaries;
+  }
+
+  /**
+   * Positions for the given portfolios, or for every portfolio owned by the
+   * user when `portfolioIds` is omitted.
+   */
+  async getUserPositions(
+    userId: string,
+    portfolioIds?: string[],
+  ): Promise<PortfolioDto> {
+    return this.buildPortfolio(userId, portfolioIds);
+  }
+
+  /**
+   * Builds the aggregated portfolio for a user, optionally restricted to a set
+   * of portfolios.
    *
    * Notes / simplifications:
+   * - `portfolioIds === undefined` means "no filter" (all portfolios);
+   *   an empty array means "nothing selected" (empty result).
    * - Positions are aggregated per ticker (no FIFO lot tracking). Quantity is
    *   the net of buys and sells; avgPrice is the weighted average of BUY trades.
    * - Fully closed positions (net quantity === 0) are omitted.
@@ -161,9 +204,25 @@ export class InvestmentService {
    * - `allocation` is currently weighted by cost basis, because there is no
    *   quotes API yet. Once live prices exist it should use marketValue.
    */
-  async getUserPositions(userId: string): Promise<PortfolioDto> {
+  private async buildPortfolio(
+    userId: string,
+    portfolioIds?: string[],
+  ): Promise<PortfolioDto> {
+    // An explicit empty selection means "nothing selected" -> empty portfolio.
+    if (portfolioIds && portfolioIds.length === 0) {
+      return { positions: [], cash: 0, totalValue: 0 };
+    }
+
+    const tradesWhere: FindOptionsWhere<StatementRecord> = {
+      userId,
+      section: 'Trades',
+    };
+    if (portfolioIds) {
+      tradesWhere.portfolioId = In(portfolioIds);
+    }
+
     const records = await this.statementRecordRepository.find({
-      where: { userId, section: 'Trades' },
+      where: tradesWhere,
       order: { createdAt: 'ASC' },
     });
 
@@ -218,7 +277,7 @@ export class InvestmentService {
       positionsCostBasis += position.quantity * avgPrice;
     }
 
-    const cash = await this.getCashBalance(userId);
+    const cash = await this.getCashBalance(userId, portfolioIds);
     const totalValue = positionsCostBasis + cash;
 
     const result: PositionDto[] = [];
@@ -265,7 +324,8 @@ export class InvestmentService {
   }
 
   /**
-   * Extracts the free cash balance from the user's IBKR "Cash Report" rows.
+   * Extracts the free cash balance from the user's IBKR "Cash Report" rows,
+   * optionally restricted to a set of portfolios.
    *
    * Rows look like:
    *   { "Cash Report": "Cash Report", "Header": "Data",
@@ -277,9 +337,20 @@ export class InvestmentService {
    * mixing currencies (e.g. PLN cash into a USD portfolio). Returns 0 when no
    * ending-cash row exists.
    */
-  private async getCashBalance(userId: string): Promise<number> {
+  private async getCashBalance(
+    userId: string,
+    portfolioIds?: string[],
+  ): Promise<number> {
+    const where: FindOptionsWhere<StatementRecord> = {
+      userId,
+      section: CASH_REPORT_SECTION,
+    };
+    if (portfolioIds) {
+      where.portfolioId = In(portfolioIds);
+    }
+
     const records = await this.statementRecordRepository.find({
-      where: { userId, section: CASH_REPORT_SECTION },
+      where,
       order: { createdAt: 'ASC' },
     });
 

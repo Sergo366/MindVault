@@ -28,9 +28,30 @@ export interface Portfolio {
   totalValue: number;
 }
 
+export interface PortfolioSummary {
+  id: string;
+  name: string;
+  cash: number;
+  totalValue: number;
+}
+
 export const investmentApi = {
-  getPositions: async (): Promise<Portfolio> => {
-    const response = await apiClient.get<Portfolio>('/investment/positions');
+  // Passing an empty array means "no portfolios selected"; omitting the
+  // argument entirely returns positions across all portfolios.
+  getPositions: async (portfolioIds?: string[]): Promise<Portfolio> => {
+    const response = await apiClient.get<Portfolio>('/investment/positions', {
+      params:
+        portfolioIds === undefined
+          ? undefined
+          : { portfolioIds: portfolioIds.join(',') },
+    });
+    return response.data;
+  },
+
+  getPortfolios: async (): Promise<PortfolioSummary[]> => {
+    const response = await apiClient.get<PortfolioSummary[]>(
+      '/investment/portfolios',
+    );
     return response.data;
   },
 };

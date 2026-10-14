@@ -1,5 +1,5 @@
 /**
- * Response shapes for GET /investment/positions.
+ * Response shapes for GET /investment/positions and /investment/portfolios.
  *
  * `PositionDto` intentionally mirrors the client `Position` type
  * (client/api/investment.ts) so the payload can be rendered directly.
@@ -40,5 +40,16 @@ export interface PortfolioDto {
 
   // Total portfolio value = sum(open positions cost basis) + cash, used as the
   // denominator for `allocation` until live market prices are available.
+  totalValue: number;
+}
+
+/**
+ * Lightweight per-portfolio summary used to render the portfolio cards on the
+ * Investments page (id, name, and the aggregate value incl. cash).
+ */
+export interface PortfolioSummaryDto {
+  id: string;
+  name: string;
+  cash: number;
   totalValue: number;
 }

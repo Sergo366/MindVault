@@ -6,21 +6,56 @@ import {
   Loader2,
   AlertCircle,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import apiClient from '@/lib/api-client';
 import { usePositions } from '@/hooks/usePositions';
+import { usePortfolios } from '@/hooks/usePortfolios';
 import PositionsTable from '@/components/investments/PositionsTable';
+import {
+  AddPortfolioCard,
+  PortfolioCard,
+} from '@/components/investments/PortfolioCard';
 
 export default function InvestmentsPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  // `null` means "not initialised yet" - we auto-select all portfolios once
+  // they have loaded.
+  const [selectedIds, setSelectedIds] = useState<string[] | null>(null);
 
-  const { data: portfolio, isLoading, isError, refetch } = usePositions();
+  const portfoliosQuery = usePortfolios();
+  const portfolios = portfoliosQuery.data ?? [];
+
+  useEffect(() => {
+    if (selectedIds === null && portfolios.length > 0) {
+      setSelectedIds(portfolios.map((portfolio) => portfolio.id));
+    }
+  }, [portfolios, selectedIds]);
+
+  // Fall back to "all" while the selection has not been initialised yet.
+  const effectiveIds = selectedIds ?? portfolios.map((portfolio) => portfolio.id);
+
+  const {
+    data: portfolio,
+    isLoading,
+    isError,
+    refetch,
+  } = usePositions({
+    enabled: !portfoliosQuery.isLoading,
+    portfolioIds: effectiveIds,
+  });
 
   const positions = portfolio?.positions ?? [];
-  // The table / empty state is driven by real data fetched from
-  // GET /investment/positions (via react-query).
   const hasData = positions.length > 0;
+
+  const togglePortfolio = (id: string) => {
+    setSelectedIds((prev) => {
+      const current = prev ?? portfolios.map((portfolio) => portfolio.id);
+      return current.includes(id)
+        ? current.filter((value) => value !== id)
+        : [...current, id];
+    });
+  };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -42,8 +77,8 @@ export default function InvestmentsPage() {
         },
       });
 
-      // Re-fetch positions so the freshly uploaded statement is reflected
-      await refetch();
+      // Re-fetch portfolios and positions so fresh data is reflected
+      await Promise.all([refetch(), portfoliosQuery.refetch()]);
     } catch (error: any) {
       console.error('Failed to upload CSV:', error);
       setUploadError(
@@ -62,8 +97,8 @@ export default function InvestmentsPage() {
       <div className="flex justify-between items-center mt-6">
         <h1 className="text-3xl font-bold tracking-tight">Investments</h1>
 
-        {/* Upload Button */}
-        {hasData && (
+        {/* Upload Button - available as soon as a portfolio exists */}
+        {portfolios.length > 0 && (
           <label className="cursor-pointer bg-white/5 hover:bg-white/10 transition-colors border border-white/10 rounded-xl px-4 py-2 flex items-center gap-2 text-sm font-medium">
             {isUploading ? (
               <Loader2 className="w-4 h-4 text-stone-400 animate-spin" />
@@ -81,6 +116,20 @@ export default function InvestmentsPage() {
             />
           </label>
         )}
+      </div>
+
+      {/* Portfolio cards */}
+      <div className="flex flex-wrap gap-4">
+        {portfolios.map((item) => (
+          <PortfolioCard
+            key={item.id}
+            name={item.name}
+            totalValue={item.totalValue}
+            selected={effectiveIds.includes(item.id)}
+            onToggle={() => togglePortfolio(item.id)}
+          />
+        ))}
+        <AddPortfolioCard href="/settings/portfolio" />
       </div>
 
       {uploadError && (
@@ -109,6 +158,24 @@ export default function InvestmentsPage() {
           >
             Retry
           </button>
+        </div>
+      ) : portfolios.length === 0 ? (
+        <div className="flex flex-col items-center justify-center flex-1 mt-10 p-10 border border-dashed border-white/10 rounded-3xl bg-white/[0.01]">
+          <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-6">
+            <FileSpreadsheet className="w-8 h-8 text-primary" />
+          </div>
+          <h2 className="text-xl font-bold mb-2">No portfolios yet</h2>
+          <p className="text-stone-400 text-center max-w-md">
+            Create a portfolio using the card above to start tracking your
+            investments.
+          </p>
+        </div>
+      ) : effectiveIds.length === 0 ? (
+        <div className="flex flex-col items-center justify-center flex-1 mt-10 p-10 border border-dashed border-white/10 rounded-3xl bg-white/[0.01]">
+          <h2 className="text-lg font-bold mb-2">No portfolio selected</h2>
+          <p className="text-stone-400 text-center max-w-md">
+            Select one or more portfolios above to see their positions.
+          </p>
         </div>
       ) : !hasData ? (
         <div className="flex flex-col items-center justify-center flex-1 mt-10 p-10 border border-dashed border-white/10 rounded-3xl bg-white/[0.01]">
