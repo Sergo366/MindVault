@@ -118,75 +118,75 @@ export default function PortfolioSettingsPage() {
           </button>
         </div>
       ) : (
-        <div className="flex flex-wrap gap-4">
-          {portfolios.map((portfolio) => (
-            <PortfolioManageCard
-              key={portfolio.id}
-              portfolio={portfolio}
-              onRename={handleRename}
-              onDelete={handleDelete}
-              isRenamePending={
-                updateMutation.isPending &&
-                updateMutation.variables?.id === portfolio.id
-              }
-              isDeletePending={
-                deleteMutation.isPending &&
-                deleteMutation.variables === portfolio.id
-              }
-            />
-          ))}
-
-          {/* Add portfolio card - always visible so more portfolios can be
-              created even after the first one exists. */}
-          {isAdding ? (
-            <div className="flex h-[120px] w-[250px] shrink-0 flex-col justify-between rounded-2xl border border-emerald-400/40 bg-emerald-400/[0.06] p-4">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-300/80">
-                New portfolio
-              </span>
-              <div className="flex items-center gap-1">
-                <input
-                  value={newName}
-                  onChange={(event) => setNewName(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') handleCreate();
-                    if (event.key === 'Escape') resetForm();
-                  }}
-                  placeholder="Portfolio name"
-                  autoFocus
-                  disabled={createMutation.isPending}
-                  className="min-w-0 flex-1 rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-sm text-white outline-none placeholder:text-stone-500 focus:border-emerald-400/50 disabled:opacity-50"
+        <div className="flex flex-col gap-4">
+          {portfolios.length > 0 && (
+            <div className="flex flex-wrap gap-4">
+              {portfolios.map((portfolio) => (
+                <PortfolioManageCard
+                  key={portfolio.id}
+                  portfolio={portfolio}
+                  onRename={handleRename}
+                  onDelete={handleDelete}
+                  isRenamePending={
+                    updateMutation.isPending &&
+                    updateMutation.variables?.id === portfolio.id
+                  }
+                  isDeletePending={
+                    deleteMutation.isPending &&
+                    deleteMutation.variables === portfolio.id
+                  }
                 />
-                <button
-                  type="button"
-                  onClick={handleCreate}
-                  disabled={createMutation.isPending || !newName.trim()}
-                  className="rounded-lg bg-emerald-400 px-3 py-1 text-sm font-medium text-stone-900 transition-colors hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {createMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    'Add'
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={resetForm}
-                  disabled={createMutation.isPending}
-                  aria-label="Cancel"
-                  className="flex h-7 w-7 items-center justify-center rounded-md text-stone-400 transition-colors hover:bg-white/10 disabled:opacity-50"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
+              ))}
+            </div>
+          )}
+
+          {/* Full-width add-portfolio bar. Clicking it swaps in an editable row
+              on the same width, instead of opening a small square card. */}
+          {isAdding ? (
+            <div className="flex w-full items-center gap-2 rounded-2xl border border-emerald-400/40 bg-emerald-400/[0.06] px-4 py-3">
+              <Plus className="h-4 w-4 shrink-0 text-emerald-300/80" />
+              <input
+                value={newName}
+                onChange={(event) => setNewName(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') handleCreate();
+                  if (event.key === 'Escape') resetForm();
+                }}
+                placeholder="Portfolio name"
+                autoFocus
+                disabled={createMutation.isPending}
+                className="min-w-0 flex-1 border-none bg-transparent text-sm text-white outline-none placeholder:text-stone-500 disabled:opacity-50"
+              />
+              <button
+                type="button"
+                onClick={handleCreate}
+                disabled={createMutation.isPending || !newName.trim()}
+                className="rounded-lg bg-emerald-400 px-4 py-1.5 text-sm font-medium text-stone-900 transition-colors hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {createMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  'Add'
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={resetForm}
+                disabled={createMutation.isPending}
+                aria-label="Cancel"
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-stone-400 transition-colors hover:bg-white/10 disabled:opacity-50"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
           ) : (
             <button
               type="button"
               onClick={() => setIsAdding(true)}
-              className="group flex h-[120px] w-[250px] shrink-0 flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-white/15 bg-white/[0.01] text-stone-400 transition-all hover:border-emerald-400/40 hover:bg-emerald-400/[0.04] hover:text-emerald-300"
+              className="group flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-white/15 bg-white/[0.01] py-3 text-stone-400 transition-all hover:border-emerald-400/40 hover:bg-emerald-400/[0.04] hover:text-emerald-300"
             >
-              <span className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 transition-colors group-hover:border-emerald-400/40 group-hover:bg-emerald-400/10">
-                <Plus className="h-4 w-4" />
+              <span className="flex h-6 w-6 items-center justify-center rounded-full border border-white/10 bg-white/5 transition-colors group-hover:border-emerald-400/40 group-hover:bg-emerald-400/10">
+                <Plus className="h-3.5 w-3.5" />
               </span>
               <span className="text-sm font-medium">Add portfolio</span>
             </button>
