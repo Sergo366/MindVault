@@ -35,6 +35,11 @@ export interface PortfolioSummary {
   totalValue: number;
 }
 
+export interface UploadStatementsResult {
+  message: string;
+  total: number;
+}
+
 export const investmentApi = {
   // Passing an empty array means "no portfolios selected"; omitting the
   // argument entirely returns positions across all portfolios.
@@ -51,6 +56,19 @@ export const investmentApi = {
   getPortfolios: async (): Promise<PortfolioSummary[]> => {
     const response = await apiClient.get<PortfolioSummary[]>(
       '/investment/portfolios',
+    );
+    return response.data;
+  },
+
+  uploadStatements: async (files: File[]): Promise<UploadStatementsResult> => {
+    const formData = new FormData();
+    for (const file of files) {
+      formData.append('files', file);
+    }
+    const response = await apiClient.post<UploadStatementsResult>(
+      '/investment/upload-statements',
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' } },
     );
     return response.data;
   },

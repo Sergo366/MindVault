@@ -7,18 +7,23 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import apiClient from '@/lib/api-client';
 import { usePositions } from '@/hooks/usePositions';
 import { usePortfolios } from '@/hooks/usePortfolios';
+import { useUploadStatements } from '@/hooks/useUploadStatements';
 import PositionsTable from '@/components/investments/PositionsTable';
 import {
   AddPortfolioCard,
   PortfolioCard,
 } from '@/components/investments/PortfolioCard';
 
+function getUploadErrorMessage(error: unknown): string {
+  const message = (
+    error as { response?: { data?: { message?: string } } } | undefined
+  )?.response?.data?.message;
+  return message || 'Failed to upload files. Please try again.';
+}
+
 export default function InvestmentsPage() {
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
   // `null` means "not initialised yet" - we auto-select all portfolios once
   // they have loaded.
   const [selectedIds, setSelectedIds] = useState<string[] | null>(null);
@@ -33,7 +38,8 @@ export default function InvestmentsPage() {
   }, [portfolios, selectedIds]);
 
   // Fall back to "all" while the selection has not been initialised yet.
-  const effectiveIds = selectedIds ?? portfolios.map((portfolio) => portfolio.id);
+  const effectiveIds =
+    selectedIds ?? portfolios.map((portfolio) => portfolio.id);
 
   const {
     data: portfolio,
@@ -44,6 +50,14 @@ export default function InvestmentsPage() {
     enabled: !portfoliosQuery.isLoading,
     portfolioIds: effectiveIds,
   });
+
+  // Loading / error state for the upload comes from the mutation; the hook also
+  // invalidates the portfolios and positions queries on success.
+  const uploadMutation = useUploadStatements();
+  const isUploading = uploadMutation.isPending;
+  const uploadError = uploadMutation.isError
+    ? getUploadErrorMessage(uploadMutation.error)
+    : null;
 
   const positions = portfolio?.positions ?? [];
   const hasData = positions.length > 0;
@@ -57,39 +71,16 @@ export default function InvestmentsPage() {
     });
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    setIsUploading(true);
-    setUploadError(null);
-
-    const formData = new FormData();
-    for (let i = 0; i < files.length; i++) {
-      formData.append('files', files[i]);
-    }
-
-    try {
-      // API call to upload the CSV files to the backend
-      await apiClient.post('/investment/upload-statements', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-
-      // Re-fetch portfolios and positions so fresh data is reflected
-      await Promise.all([refetch(), portfoliosQuery.refetch()]);
-    } catch (error: any) {
-      console.error('Failed to upload CSV:', error);
-      setUploadError(
-        error?.response?.data?.message ||
-          'Failed to upload files. Please try again.',
-      );
-    } finally {
-      setIsUploading(false);
-      // Reset input
-      e.target.value = '';
-    }
+    uploadMutation.mutate(Array.from(files), {
+      onSettled: () => {
+        // Reset the input so the same file can be picked again if needed.
+        e.target.value = '';
+      },
+    });
   };
 
   return (
