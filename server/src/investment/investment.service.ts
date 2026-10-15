@@ -67,7 +67,11 @@ export class InvestmentService {
     private readonly portfolioRepository: Repository<Portfolio>,
   ) {}
 
-  async uploadStatementFiles(files: Express.Multer.File[], userId: string) {
+  async uploadStatementFiles(
+    files: Express.Multer.File[],
+    userId: string,
+    portfolioId: string,
+  ) {
     this.logger.log(
       `Processing ${files.length} statement files for user ${userId}`,
     );
@@ -123,6 +127,7 @@ export class InvestmentService {
 
           // Create the generic entity record
           const record = this.statementRecordRepository.create({
+            portfolioId,
             userId,
             section: sectionName,
             rawData,

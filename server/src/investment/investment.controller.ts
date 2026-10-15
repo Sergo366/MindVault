@@ -39,8 +39,13 @@ export class InvestmentController {
     )
     files: Express.Multer.File[],
     @GetCurrentUserId() userId: string,
+    @Body('portfolioId') portfolioId: string,
   ) {
-    return this.investmentService.uploadStatementFiles(files, userId);
+    return this.investmentService.uploadStatementFiles(
+      files,
+      userId,
+      portfolioId,
+    );
   }
 
   @Get('portfolios')
