@@ -347,6 +347,22 @@ export class InvestmentService {
     return Boolean(portfolio?.affected && portfolio.affected > 0);
   }
 
+  async updatePortfolioNameById({
+    portfolioId,
+    userId,
+    name,
+  }: {
+    portfolioId: string;
+    userId: string;
+    name: string;
+  }): Promise<boolean> {
+    const portfolio = await this.portfolioRepository.update(portfolioId, {
+      userId,
+      name,
+    });
+    return portfolio.save();
+  }
+
   /**
    * Extracts the free cash balance from the user's IBKR "Cash Report" rows,
    * optionally restricted to a set of portfolios.
