@@ -83,11 +83,18 @@ export const investmentApi = {
     await apiClient.delete(`/investment/portfolios`, { data: { portfolioId: id } });
   },
 
-  uploadStatements: async (files: File[]): Promise<UploadStatementsResult> => {
+  // The statement is imported into `portfolioId`, so the backend can attach
+  // every parsed record to that portfolio (StatementRecord.portfolioId is
+  // NOT NULL).
+  uploadStatements: async (
+    files: File[],
+    portfolioId: string,
+  ): Promise<UploadStatementsResult> => {
     const formData = new FormData();
     for (const file of files) {
       formData.append('files', file);
     }
+    formData.append('portfolioId', portfolioId);
     const response = await apiClient.post<UploadStatementsResult>(
       '/investment/upload-statements',
       formData,
