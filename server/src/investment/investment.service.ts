@@ -163,7 +163,7 @@ export class InvestmentService {
       where: { userId },
       order: { createdAt: 'ASC' },
     });
-    console.log('portfolios2', portfolios);
+
     const summaries: PortfolioSummaryDto[] = [];
     for (const portfolio of portfolios) {
       const totals = await this.buildPortfolio(userId, [portfolio.id]);
@@ -331,6 +331,20 @@ export class InvestmentService {
   }): Promise<CreatedPortfolioDto> {
     const portfolio = this.portfolioRepository.create({ userId, name });
     return this.portfolioRepository.save(portfolio);
+  }
+
+  async deletePortfolioById({
+    portfolioId,
+    userId,
+  }: {
+    portfolioId: string;
+    userId: string;
+  }): Promise<boolean> {
+    const portfolio = await this.portfolioRepository.delete({
+      userId,
+      id: portfolioId,
+    });
+    return Boolean(portfolio?.affected && portfolio.affected > 0);
   }
 
   /**

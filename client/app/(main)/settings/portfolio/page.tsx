@@ -59,14 +59,6 @@ export default function PortfolioSettingsPage() {
   };
 
   const handleDelete = (id: string) => {
-    if (
-      !window.confirm(
-        'Delete this portfolio? All of its statement records will be deleted too.',
-      )
-    ) {
-      return;
-    }
-
     setActionError(null);
     deleteMutation.mutate(id, {
       onError: (error) => setActionError(getErrorMessage(error)),

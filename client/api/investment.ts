@@ -80,7 +80,7 @@ export const investmentApi = {
   },
 
   deletePortfolio: async (id: string): Promise<void> => {
-    await apiClient.delete(`/investment/portfolios/${id}`);
+    await apiClient.delete(`/investment/portfolios`, { data: { portfolioId: id } });
   },
 
   uploadStatements: async (files: File[]): Promise<UploadStatementsResult> => {
