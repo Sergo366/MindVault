@@ -15,6 +15,9 @@ export class Portfolio {
   @PrimaryColumnV7()
   id: string;
 
+  // @Column() is what actually makes TypeORM persist this field. Without it,
+  // save() silently skips it and the column is never even created.
+  @Column()
   @IsString()
   name: string;
 
