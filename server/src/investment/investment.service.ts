@@ -356,11 +356,14 @@ export class InvestmentService {
     userId: string;
     name: string;
   }): Promise<boolean> {
-    const portfolio = await this.portfolioRepository.update(portfolioId, {
-      userId,
-      name,
-    });
-    return portfolio.save();
+    // `update()` returns an UpdateResult, not a Portfolio, so there is no
+    // `.save()` to call. The row is matched by id AND userId (ownership check)
+    // and only `name` is written - userId must not be part of the SET payload.
+    const result = await this.portfolioRepository.update(
+      { id: portfolioId, userId },
+      { name },
+    );
+    return Boolean(result.affected && result.affected > 0);
   }
 
   /**
