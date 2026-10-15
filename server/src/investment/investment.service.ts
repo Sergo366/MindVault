@@ -163,7 +163,7 @@ export class InvestmentService {
       where: { userId },
       order: { createdAt: 'ASC' },
     });
-
+    console.log('portfolios2', portfolios);
     const summaries: PortfolioSummaryDto[] = [];
     for (const portfolio of portfolios) {
       const totals = await this.buildPortfolio(userId, [portfolio.id]);
