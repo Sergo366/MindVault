@@ -9,6 +9,7 @@ import {
   MaxFileSizeValidator,
   Body,
   Delete,
+  Patch,
 } from '@nestjs/common';
 import { InvestmentService } from './investment.service';
 import { GetCurrentUserId } from '../auth/decorators/get-current-user-id.decorator';
@@ -63,6 +64,18 @@ export class InvestmentController {
     @GetCurrentUserId() userId: string,
   ): Promise<boolean> {
     return this.investmentService.deletePortfolioById({ portfolioId, userId });
+  }
+
+  @Patch('portfolios')
+  updatePortfolio(
+    @Body() body: { name: string; portfolioId: string },
+    @GetCurrentUserId() userId: string,
+  ): Promise<boolean> {
+    return this.investmentService.updatePortfolioNameById({
+      name: body.name,
+      userId,
+      portfolioId: body.portfolioId,
+    });
   }
 
   @Get('positions')

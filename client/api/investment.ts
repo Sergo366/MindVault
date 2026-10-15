@@ -73,8 +73,8 @@ export const investmentApi = {
     name: string,
   ): Promise<PortfolioSummary> => {
     const response = await apiClient.patch<PortfolioSummary>(
-      `/investment/portfolios/${id}`,
-      { name },
+      `/investment/portfolios`,
+      { name, portfolioId: id },
     );
     return response.data;
   },
