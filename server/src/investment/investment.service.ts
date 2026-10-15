@@ -5,6 +5,7 @@ import { FindOptionsWhere, In, Repository } from 'typeorm';
 import { StatementRecord } from './entities/statement-record.entity';
 import { Portfolio } from './entities/portfolio.entity';
 import {
+  CreatedPortfolioDto,
   PortfolioDto,
   PortfolioSummaryDto,
   PositionDto,
@@ -257,9 +258,7 @@ export class InvestmentService {
         // "Basis" already includes the commission, so prefer it when it is a
         // usable positive number; otherwise fall back to quantity x fill price.
         const basis =
-          basisValue !== undefined
-            ? Math.abs(this.parseNumber(basisValue))
-            : 0;
+          basisValue !== undefined ? Math.abs(this.parseNumber(basisValue)) : 0;
         const cost = basis > 0 ? basis : quantity * tradePrice;
 
         position.buyCost += cost;
@@ -321,6 +320,17 @@ export class InvestmentService {
       cash: this.round(cash),
       totalValue: this.round(totalValue),
     };
+  }
+
+  async createPortfolio({
+    userId,
+    name,
+  }: {
+    userId: string;
+    name: string;
+  }): Promise<CreatedPortfolioDto> {
+    const portfolio = this.portfolioRepository.create({ userId, name });
+    return this.portfolioRepository.save(portfolio);
   }
 
   /**
@@ -388,7 +398,11 @@ export class InvestmentService {
   private readField(data: Record<string, unknown>, keys: string[]): unknown {
     for (const key of keys) {
       const value = data[key];
-      if (value !== undefined && value !== null && String(value).trim() !== '') {
+      if (
+        value !== undefined &&
+        value !== null &&
+        String(value).trim() !== ''
+      ) {
         return value;
       }
     }

@@ -53,3 +53,10 @@ export interface PortfolioSummaryDto {
   cash: number;
   totalValue: number;
 }
+
+export interface CreatedPortfolioDto {
+  id: string;
+  name: string;
+  createdAt: Date;
+  updatedAt: Date;
+}

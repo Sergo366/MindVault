@@ -7,12 +7,17 @@ import {
   UploadedFiles,
   ParseFilePipe,
   MaxFileSizeValidator,
+  Body,
 } from '@nestjs/common';
 import { InvestmentService } from './investment.service';
 import { GetCurrentUserId } from '../auth/decorators/get-current-user-id.decorator';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { IBKRCsvValidator } from './validators/ibkr-csv.validator';
-import { PortfolioDto, PortfolioSummaryDto } from './dtos/position.dto';
+import {
+  CreatedPortfolioDto,
+  PortfolioDto,
+  PortfolioSummaryDto,
+} from './dtos/position.dto';
 
 @Controller('investment')
 export class InvestmentController {
@@ -41,6 +46,14 @@ export class InvestmentController {
     @GetCurrentUserId() userId: string,
   ): Promise<PortfolioSummaryDto[]> {
     return this.investmentService.getUserPortfolios(userId);
+  }
+
+  @Post('portfolios')
+  postPortfolio(
+    @Body('name') name: string,
+    @GetCurrentUserId() userId: string,
+  ): Promise<CreatedPortfolioDto> {
+    return this.investmentService.createPortfolio({ name, userId });
   }
 
   @Get('positions')
