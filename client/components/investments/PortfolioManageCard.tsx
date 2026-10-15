@@ -89,7 +89,7 @@ export function PortfolioManageCard({
               }}
               autoFocus
               disabled={isRenamePending}
-              className="min-w-0 max-w-xs flex-1 rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-sm text-white outline-none focus:border-primary/50 disabled:opacity-50"
+              className="min-w-0 flex-1 rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-sm text-white outline-none focus:border-primary/50 disabled:opacity-50"
             />
             <button
               type="button"
