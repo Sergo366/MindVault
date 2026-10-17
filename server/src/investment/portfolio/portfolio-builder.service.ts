@@ -50,28 +50,6 @@ export class PortfolioBuilderService {
     private readonly twelveDataService: TwelveDataService,
   ) {}
 
-  /**
-   * Builds the aggregated portfolio for a user, optionally restricted to a set
-   * of portfolios.
-   *
-   * Notes / simplifications:
-   * - `portfolioIds === undefined` means "no filter" (all portfolios);
-   *   an empty array means "nothing selected" (empty result).
-   * - Positions are aggregated per ticker (no FIFO lot tracking). Quantity is
-   *   the net of buys and sells; avgPrice is the weighted average of BUY trades.
-   * - Fully closed positions (net quantity === 0) are omitted.
-   * - Cost is taken from the IBKR "Basis" column when present (it already
-   *   includes commissions), falling back to Quantity x "T. Price".
-   * - Currency-pair symbols (e.g. "USD.PLN") are skipped: they are FX
-   *   conversions, not portfolio holdings.
-   * - Live prices come from TwelveDataService, which caches per ticker for 10
-   *   minutes. Only tickers with an open position are requested.
-   * - If a ticker's price is unavailable (cache miss + API failure, or unknown
-   *   symbol), its marketValue falls back to costBasis so unrealizedPnl is 0
-   *   instead of falsely reporting the whole cost as a loss.
-   * - `changePercent` and `dailyPnl` are 0: both require a previous close,
-   *   which the /price endpoint does not return (would use /quote instead).
-   */
   async buildPortfolio(
     userId: string,
     portfolioIds?: string[],
@@ -99,7 +77,9 @@ export class PortfolioBuilderService {
     // Only ask for prices for tickers that are actually held.
     const openTickers: string[] = [];
     for (const position of positions.values()) {
-      if (position.quantity !== 0) openTickers.push(position.ticker);
+      if (position.quantity !== 0 || position.quantity < 0) {
+        openTickers.push(position.ticker);
+      }
     }
 
     const prices = await this.twelveDataService.getPrices(openTickers);
@@ -109,7 +89,7 @@ export class PortfolioBuilderService {
 
     for (const position of positions.values()) {
       // A position that was fully closed out is not a holding.
-      if (position.quantity === 0) continue;
+      if (position.quantity === 0 || position.quantity < 0) continue;
 
       const avgPrice =
         position.buyQuantity > 0 ? position.buyCost / position.buyQuantity : 0;
@@ -118,7 +98,9 @@ export class PortfolioBuilderService {
       const hasPrice = marketPrice > 0;
 
       // Without a live price we fall back to cost basis (see class docstring).
-      const marketValue = hasPrice ? position.quantity * marketPrice : costBasis;
+      const marketValue = hasPrice
+        ? position.quantity * marketPrice
+        : costBasis;
       const unrealizedPnl = hasPrice ? marketValue - costBasis : 0;
 
       positionsMarketValue += marketValue;

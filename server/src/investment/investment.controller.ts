@@ -86,10 +86,6 @@ export class InvestmentController {
   @Get('positions')
   getPositions(
     @GetCurrentUserId() userId: string,
-    // Comma-separated list of portfolio ids. When the parameter is present but
-    // empty (e.g. "?portfolioIds="), it means "no portfolio selected" and an
-    // empty portfolio is returned. When the parameter is omitted entirely,
-    // positions for all of the user's portfolios are returned.
     @Query('portfolioIds') portfolioIds?: string,
   ): Promise<PortfolioDto> {
     const ids =
