@@ -49,9 +49,7 @@ export default function InvestmentsPage() {
     isError,
     refetch,
   } = usePositions({
-    enabled: !portfoliosQuery.isLoading,
-    // An empty array means "nothing selected", so the API returns an empty
-    // portfolio instead of aggregating across all portfolios.
+    enabled: !portfoliosQuery.isLoading && Boolean(selectedId),
     portfolioIds: selectedId ? [selectedId] : [],
   });
 
