@@ -22,7 +22,7 @@ import { RedisService } from '../../redis/redis.service';
 export class TwelveDataService {
   private readonly logger = new Logger(TwelveDataService.name);
   private readonly baseUrl = 'https://api.twelvedata.com/price';
-  private readonly cacheTtlSeconds = 10 * 60; // 10 minutes
+  private readonly cacheTtlSeconds = 3600; // 1 hour
   private readonly cacheKeyPrefix = 'prices:';
 
   constructor(
@@ -113,6 +113,7 @@ export class TwelveDataService {
         return {};
       }
       const payload: unknown = await response.json();
+      console.log('payload123', payload);
       return this.normalizeResponse(payload, tickers);
     } catch (error) {
       this.logger.error(
