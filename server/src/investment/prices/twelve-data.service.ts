@@ -2,6 +2,23 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '../../redis/redis.service';
 
+/**
+ * A single price lookup request.
+ *
+ * `quantity` is the current position size. When provided and <= 0 (or not a
+ * finite number) the ticker is treated as a closed/sold position and is
+ * skipped completely: no Redis read, no Twelve Data request, no cache write,
+ * no entry in the result. Omit `quantity` to always look the ticker up
+ * (backwards-compatible behaviour).
+ */
+export interface PriceLookup {
+  ticker: string;
+  quantity?: number;
+}
+
+/** Either a bare ticker or a ticker with its position quantity. */
+export type PriceLookupInput = string | PriceLookup;
+
 interface RequestOutcome {
   prices: Record<string, number>;
   skipped: boolean;
@@ -22,11 +39,12 @@ interface Deferred {
  * (https://api.twelvedata.com/price) and caches each ticker's price in Redis.
  *
  * getPrices() flow:
- *   1. read every requested ticker from Redis first;
- *   2. keep only the tickers that are not cached (or whose cached value is
+ *   1. drop requests whose position quantity is <= 0 (sold/empty positions);
+ *   2. read every remaining ticker from Redis first;
+ *   3. keep only the tickers that are not cached (or whose cached value is
  *      unusable) in `missing`;
- *   3. skip the network entirely when `missing` is empty;
- *   4. otherwise fetch just the misses and write the results back to Redis
+ *   4. skip the network entirely when `missing` is empty;
+ *   5. otherwise fetch just the misses and write the results back to Redis
  *      with a TTL.
  *
  * Rate limiting / resilience:
@@ -95,15 +113,27 @@ export class TwelveDataService {
   /**
    * Returns the latest price for each of the given tickers.
    *
-   * Result keys are exactly the tickers that have a known price. Tickers that
-   * couldn't be resolved (API failure, rate-limit budget exhausted, unknown
-   * symbol) are simply omitted from the map.
+   * Accepts either bare tickers (`['AAPL']`) or tickers with a position size
+   * (`[{ ticker: 'AAPL', quantity: 10 }]`). Requests with `quantity <= 0` are
+   * skipped entirely — no cache read, no API call — because a sold position
+   * has no price to show.
+   *
+   * Result keys are exactly the tickers that have a known price and an open
+   * position. Tickers that couldn't be resolved (API failure, rate-limit
+   * budget exhausted, unknown symbol) are simply omitted from the map.
    */
-  async getPrices(tickers: string[]): Promise<Record<string, number>> {
-    const uniqueTickers = Array.from(
-      new Set(tickers.map((t) => t.trim()).filter(Boolean)),
-    );
-    if (uniqueTickers.length === 0) return {};
+  async getPrices(
+    inputs: PriceLookupInput[],
+  ): Promise<Record<string, number>> {
+    const { wanted, closed } = this.splitByPositionSize(inputs);
+
+    if (closed.length > 0) {
+      this.logger.debug(
+        `getPrices: skipping ${closed.length} closed position(s): ${closed.join(', ')}`,
+      );
+    }
+
+    if (wanted.length === 0) return {};
 
     // Step 1 — cache-first lookup. Read every requested ticker from Redis
     // before any network call, so we know exactly which ones are missing.
@@ -111,7 +141,7 @@ export class TwelveDataService {
     const missing: string[] = [];
 
     const lookups = await Promise.all(
-      uniqueTickers.map(async (ticker) => {
+      wanted.map(async (ticker) => {
         const value = await this.redisService.get(this.cacheKey(ticker));
         return { ticker, value } as const;
       }),
@@ -133,7 +163,7 @@ export class TwelveDataService {
 
     const cacheHits = Object.keys(prices).length;
     this.logger.debug(
-      `getPrices: ${cacheHits} cache hit(s), ${missing.length} miss(es) of ${uniqueTickers.length}`,
+      `getPrices: ${cacheHits} cache hit(s), ${missing.length} miss(es) of ${wanted.length}`,
     );
 
     // Step 2 — nothing to fetch: return what Redis gave us, no API call.
@@ -215,10 +245,56 @@ export class TwelveDataService {
     });
 
     this.logger.debug(
-      `getPrices: resolved ${Object.keys(prices).length} of ${uniqueTickers.length} ticker(s)`,
+      `getPrices: resolved ${Object.keys(prices).length} of ${wanted.length} ticker(s)`,
     );
 
     return prices;
+  }
+
+  /**
+   * Splits the incoming requests into "should be looked up" and "closed
+   * positions to skip".
+   *
+   * A ticker is considered closed when a `quantity` is supplied and it is not
+   * a finite positive number (i.e. 0, negative, NaN, Infinity). Bare ticker
+   * strings have no quantity and are always kept, which keeps the previous
+   * behaviour for callers that have not (yet) been updated.
+   *
+   * If the same ticker appears both open and closed (e.g. a sold lot and a
+   * still-held lot), the open one wins and the ticker is looked up.
+   */
+  private splitByPositionSize(inputs: PriceLookupInput[]): {
+    wanted: string[];
+    closed: string[];
+  } {
+    const wanted = new Set<string>();
+    const closed = new Set<string>();
+
+    for (const input of inputs) {
+      if (input === null || input === undefined) continue;
+
+      const rawTicker = typeof input === 'string' ? input : input.ticker;
+      const ticker = typeof rawTicker === 'string' ? rawTicker.trim() : '';
+      if (!ticker) continue;
+
+      const quantity = typeof input === 'string' ? undefined : input.quantity;
+
+      if (
+        typeof quantity === 'number' &&
+        (!Number.isFinite(quantity) || quantity <= 0)
+      ) {
+        // Sold / empty position: never spend a credit on it.
+        closed.add(ticker);
+        continue;
+      }
+
+      wanted.add(ticker);
+    }
+
+    // Open positions always win over closed ones.
+    for (const ticker of wanted) closed.delete(ticker);
+
+    return { wanted: Array.from(wanted), closed: Array.from(closed) };
   }
 
   private cacheKey(ticker: string): string {
