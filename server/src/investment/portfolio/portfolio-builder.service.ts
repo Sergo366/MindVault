@@ -4,6 +4,7 @@ import { FindOptionsWhere, In, Repository } from 'typeorm';
 import { StatementRecord } from '../entities/statement-record.entity';
 import { PortfolioDto, PositionDto } from '../dtos/position.dto';
 import { CashReportService } from '../cash/cash-report.service';
+import { TwelveDataService } from '../prices/twelve-data.service';
 import {
   BASIS_KEYS,
   CURRENCY_PAIR_PATTERN,
@@ -23,8 +24,19 @@ interface AggregatedPosition {
   buyQuantity: number;
 }
 
+interface PricedPosition {
+  ticker: string;
+  quantity: number;
+  price: number;
+  avgPrice: number;
+  costBasis: number;
+  marketValue: number;
+  unrealizedPnl: number;
+}
+
 /**
- * Aggregates raw IBKR statement rows into a portfolio view (positions + cash).
+ * Aggregates raw IBKR statement rows into a portfolio view (positions + cash),
+ * enriched with live prices pulled from Twelve Data.
  *
  * This service only reads statement records; it does not own the portfolio
  * lifecycle (create/rename/delete) nor the CSV parsing itself.
@@ -35,6 +47,7 @@ export class PortfolioBuilderService {
     @InjectRepository(StatementRecord)
     private readonly statementRecordRepository: Repository<StatementRecord>,
     private readonly cashReportService: CashReportService,
+    private readonly twelveDataService: TwelveDataService,
   ) {}
 
   /**
@@ -51,8 +64,13 @@ export class PortfolioBuilderService {
    *   includes commissions), falling back to Quantity x "T. Price".
    * - Currency-pair symbols (e.g. "USD.PLN") are skipped: they are FX
    *   conversions, not portfolio holdings.
-   * - `allocation` is currently weighted by cost basis, because there is no
-   *   quotes API yet. Once live prices exist it should use marketValue.
+   * - Live prices come from TwelveDataService, which caches per ticker for 10
+   *   minutes. Only tickers with an open position are requested.
+   * - If a ticker's price is unavailable (cache miss + API failure, or unknown
+   *   symbol), its marketValue falls back to costBasis so unrealizedPnl is 0
+   *   instead of falsely reporting the whole cost as a loss.
+   * - `changePercent` and `dailyPnl` are 0: both require a previous close,
+   *   which the /price endpoint does not return (would use /quote instead).
    */
   async buildPortfolio(
     userId: string,
@@ -76,6 +94,87 @@ export class PortfolioBuilderService {
       order: { createdAt: 'ASC' },
     });
 
+    const positions = this.aggregateTrades(records);
+
+    // Only ask for prices for tickers that are actually held.
+    const openTickers: string[] = [];
+    for (const position of positions.values()) {
+      if (position.quantity !== 0) openTickers.push(position.ticker);
+    }
+
+    const prices = await this.twelveDataService.getPrices(openTickers);
+
+    const priced: PricedPosition[] = [];
+    let positionsMarketValue = 0;
+
+    for (const position of positions.values()) {
+      // A position that was fully closed out is not a holding.
+      if (position.quantity === 0) continue;
+
+      const avgPrice =
+        position.buyQuantity > 0 ? position.buyCost / position.buyQuantity : 0;
+      const costBasis = position.quantity * avgPrice;
+      const marketPrice = prices[position.ticker] ?? 0;
+      const hasPrice = marketPrice > 0;
+
+      // Without a live price we fall back to cost basis (see class docstring).
+      const marketValue = hasPrice ? position.quantity * marketPrice : costBasis;
+      const unrealizedPnl = hasPrice ? marketValue - costBasis : 0;
+
+      positionsMarketValue += marketValue;
+      priced.push({
+        ticker: position.ticker,
+        quantity: position.quantity,
+        price: hasPrice ? marketPrice : 0,
+        avgPrice,
+        costBasis,
+        marketValue,
+        unrealizedPnl,
+      });
+    }
+
+    const cash = await this.cashReportService.getCashBalance(
+      userId,
+      portfolioIds,
+    );
+    const totalValue = positionsMarketValue + cash;
+
+    const result: PositionDto[] = priced.map((p) => {
+      const allocation =
+        totalValue > 0 ? (p.marketValue / totalValue) * 100 : 0;
+      return {
+        ticker: p.ticker,
+        name: p.ticker, // no company-name source available from /price
+        quantity: roundQuantity(p.quantity),
+        price: round(p.price),
+        // Requires previous close, which /price does not expose.
+        changePercent: 0,
+        dailyPnl: 0,
+        avgPrice: round(p.avgPrice),
+        costBasis: round(p.costBasis),
+        marketValue: round(p.marketValue),
+        unrealizedPnl: round(p.unrealizedPnl),
+        allocation: round(allocation),
+      };
+    });
+
+    // Show the largest positions first.
+    result.sort((a, b) => b.allocation - a.allocation);
+
+    return {
+      positions: result,
+      cash: round(cash),
+      totalValue: round(totalValue),
+    };
+  }
+
+  /**
+   * Collapses the raw "Trades" rows into a per-ticker running aggregate.
+   * Only positive quantities (buys) contribute to the weighted average price.
+   */
+  private aggregateTrades(
+    records: StatementRecord[],
+  ): Map<string, AggregatedPosition> {
     const positions = new Map<string, AggregatedPosition>();
 
     for (const record of records) {
@@ -113,62 +212,6 @@ export class PortfolioBuilderService {
       }
     }
 
-    // First pass: total cost basis of open positions, combined with cash it
-    // becomes the denominator for the allocation column.
-    let positionsCostBasis = 0;
-    for (const position of positions.values()) {
-      if (position.quantity === 0) continue;
-      const avgPrice =
-        position.buyQuantity > 0 ? position.buyCost / position.buyQuantity : 0;
-      positionsCostBasis += position.quantity * avgPrice;
-    }
-
-    const cash = await this.cashReportService.getCashBalance(
-      userId,
-      portfolioIds,
-    );
-    const totalValue = positionsCostBasis + cash;
-
-    const result: PositionDto[] = [];
-
-    for (const position of positions.values()) {
-      // A position that was fully closed out is not a holding.
-      if (position.quantity === 0) continue;
-
-      const avgPrice =
-        position.buyQuantity > 0 ? position.buyCost / position.buyQuantity : 0;
-      const costBasis = position.quantity * avgPrice;
-      const allocation = totalValue > 0 ? (costBasis / totalValue) * 100 : 0;
-
-      // -------------------------------------------------------------------
-      // NOTE: There is no market-data / quotes provider yet, so every field
-      // that depends on the *current* market price is returned as 0. Once a
-      // quotes API is wired up, compute and fill in: price, changePercent,
-      // dailyPnl, marketValue, unrealizedPnl. `allocation` should then be
-      // calculated from marketValue instead of costBasis.
-      // -------------------------------------------------------------------
-      result.push({
-        ticker: position.ticker,
-        name: position.ticker, // no company-name source available yet
-        quantity: roundQuantity(position.quantity),
-        price: 0,
-        changePercent: 0,
-        dailyPnl: 0,
-        avgPrice: round(avgPrice),
-        costBasis: round(costBasis),
-        marketValue: 0,
-        unrealizedPnl: 0,
-        allocation: round(allocation),
-      });
-    }
-
-    // Show the largest positions first.
-    result.sort((a, b) => b.allocation - a.allocation);
-
-    return {
-      positions: result,
-      cash: round(cash),
-      totalValue: round(totalValue),
-    };
+    return positions;
   }
 }
