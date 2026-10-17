@@ -4,19 +4,22 @@ import { RedisService } from '../../redis/redis.service';
 
 /**
  * Fetches current market prices from Twelve Data
- * (https://api.twelvedata.com/price) and caches each ticker's price in Redis
- * for 10 minutes.
+ * (https://api.twelvedata.com/price) and caches each ticker's price in Redis.
  *
- * Design notes:
- * - Caching is per-ticker (key `prices:<ticker>`), so:
- *   * a cache hit for one ticker doesn't invalidate unrelated tickers;
- *   * adding a new ticker only fetches the missing ones;
- *   * the cache survives process restarts and expires after the TTL.
- * - All cache misses are fetched in a single batched request to reduce API
- *   calls (Twelve Data accepts a comma-separated `symbol` list).
- * - Any failure (missing API key, rate limit, network error) is non-fatal:
- *   the caller receives an empty map for the affected tickers and can fall
- *   back to cost basis.
+ * getPrices() flow:
+ *   1. read every requested ticker from Redis first;
+ *   2. keep only the tickers that are not cached (or whose cached value is
+ *      unusable) in `missing`;
+ *   3. skip the network entirely when `missing` is empty;
+ *   4. otherwise fetch just the misses in a single batched request and write
+ *      the results back to Redis with a TTL.
+ *
+ * Properties that fall out of this design:
+ * - Cache hits never trigger an HTTP request.
+ * - Adding a new ticker only fetches that ticker, not the whole portfolio.
+ * - Failed symbols are not cached, so the next call retries them.
+ * - Redis being unavailable is non-fatal: get() returns null, every ticker
+ *   becomes a miss, and the request falls through to Twelve Data.
  */
 @Injectable()
 export class TwelveDataService {
@@ -42,33 +45,48 @@ export class TwelveDataService {
     );
     if (uniqueTickers.length === 0) return {};
 
-    const prices: Record<string, number> = {};
-    const missing: string[] = [];
-
-    // 1. Read every ticker from the cache first.
-    await Promise.all(
+    // Step 1 — cache-first lookup. Read every requested ticker from Redis
+    // before any network call, so we know exactly which ones are missing.
+    const lookups = await Promise.all(
       uniqueTickers.map(async (ticker) => {
-        const cached = await this.redisService.get(this.cacheKey(ticker));
-        if (cached === null) {
-          missing.push(ticker);
-          return;
-        }
-        const price = Number(cached);
-        if (Number.isFinite(price) && price > 0) {
-          prices[ticker] = price;
-        } else {
-          // Cached value is corrupt/unusable; force a refresh.
-          missing.push(ticker);
-        }
+        const value = await this.redisService.get(this.cacheKey(ticker));
+        return { ticker, value } as const;
       }),
     );
 
+    const prices: Record<string, number> = {};
+    const missing: string[] = [];
+
+    for (const { ticker, value } of lookups) {
+      if (value === null) {
+        missing.push(ticker);
+        continue;
+      }
+      const price = Number(value);
+      if (Number.isFinite(price) && price > 0) {
+        prices[ticker] = price;
+      } else {
+        // Corrupt or unusable cached value: treat as a miss and refresh it.
+        missing.push(ticker);
+      }
+    }
+
+    this.logger.debug(
+      `getPrices: ${prices.length} cache hit(s), ${missing.length} miss(es) of ${uniqueTickers.length}`,
+    );
+
+    // Step 2 — nothing to fetch: return what Redis gave us, no API call.
     if (missing.length === 0) return prices;
 
-    // 2. Fetch every cache miss in a single batched request.
+    // Step 3 — fetch ONLY the misses, in a single batched request.
+    this.logger.debug(
+      `getPrices: requesting ${missing.length} ticker(s): ${missing.join(', ')}`,
+    );
     const fetched = await this.fetchPrices(missing);
 
-    // 3. Persist successes (with TTL) and merge them into the result.
+    // Step 4 — write fresh prices back to Redis (with TTL) and merge them in.
+    //          Failed symbols are absent from `fetched`, so they stay uncached
+    //          and will be retried on the next call.
     await Promise.all(
       Object.entries(fetched).map(async ([ticker, price]) => {
         prices[ticker] = price;
@@ -113,7 +131,6 @@ export class TwelveDataService {
         return {};
       }
       const payload: unknown = await response.json();
-      console.log('payload123', payload);
       return this.normalizeResponse(payload, tickers);
     } catch (error) {
       this.logger.error(
@@ -130,7 +147,8 @@ export class TwelveDataService {
    *   Batch:         { "AAPL": { "price": "123.45" }, "MSFT": { ... } }
    *   Error:         { "code": 401, "message": "...", "status": "error" }
    *
-   * Failed symbols inside a batch are silently skipped.
+   * Failed symbols inside a batch are logged per-symbol and skipped without
+   * dropping the successful ones.
    */
   private normalizeResponse(
     payload: unknown,
@@ -160,9 +178,14 @@ export class TwelveDataService {
     // Batch response.
     for (const [ticker, entry] of Object.entries(root)) {
       if (!entry || typeof entry !== 'object') continue;
-      const price = Number((entry as Record<string, unknown>).price);
+      const entryObj = entry as Record<string, unknown>;
+      const price = Number(entryObj.price);
       if (Number.isFinite(price) && price > 0) {
         prices[ticker] = price;
+      } else {
+        this.logger.warn(
+          `Twelve Data returned no price for ${ticker}: ${String(entryObj.message ?? 'unknown')}`,
+        );
       }
     }
 
