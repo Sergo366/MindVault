@@ -1,0 +1,1 @@
+host = 'localhost';  port = 6379;  password = '';  useTls = REDIS_TLS === 'true'
