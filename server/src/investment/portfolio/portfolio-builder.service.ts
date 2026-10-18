@@ -4,7 +4,7 @@ import { FindOptionsWhere, In, Repository } from 'typeorm';
 import { StatementRecord } from '../entities/statement-record.entity';
 import { PortfolioDto, PositionDto } from '../dtos/position.dto';
 import { CashReportService } from '../cash/cash-report.service';
-import { TwelveDataService } from '../prices/twelve-data.service';
+import { PriceLookup, TwelveDataService } from '../prices/twelve-data.service';
 import {
   BASIS_KEYS,
   CURRENCY_PAIR_PATTERN,
@@ -74,22 +74,26 @@ export class PortfolioBuilderService {
 
     const positions = this.aggregateTrades(records);
 
-    // Only ask for prices for tickers that are actually held.
-    const openTickers: string[] = [];
+    // Only ask for prices for tickers that are actually held right now.
+    // Sold-out or short positions (quantity <= 0) must never reach Twelve
+    // Data: each symbol costs one credit, and a closed position has no price
+    // worth showing. The quantity is passed along as well so the price service
+    // can apply the same rule defensively.
+    const lookups: PriceLookup[] = [];
     for (const position of positions.values()) {
-      if (position.quantity !== 0 || position.quantity < 0) {
-        openTickers.push(position.ticker);
+      if (position.quantity > 0) {
+        lookups.push({ ticker: position.ticker, quantity: position.quantity });
       }
     }
 
-    const prices = await this.twelveDataService.getPrices(openTickers);
+    const prices = await this.twelveDataService.getPrices(lookups);
 
     const priced: PricedPosition[] = [];
     let positionsMarketValue = 0;
 
     for (const position of positions.values()) {
-      // A position that was fully closed out is not a holding.
-      if (position.quantity === 0 || position.quantity < 0) continue;
+      // A position that was fully closed out (or is short) is not a holding.
+      if (position.quantity <= 0) continue;
 
       const avgPrice =
         position.buyQuantity > 0 ? position.buyCost / position.buyQuantity : 0;
