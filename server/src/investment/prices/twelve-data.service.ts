@@ -19,26 +19,43 @@ export interface PriceLookup {
 /** Either a bare ticker or a ticker with its position quantity. */
 export type PriceLookupInput = string | PriceLookup;
 
+/**
+ * A resolved quote for one ticker.
+ *
+ * `previousClose` is the reference close used to compute the day's percent
+ * change and daily P/L. It is `null` when Twelve Data did not supply a usable
+ * value (unknown symbol, newly listed security, partial outage).
+ */
+export interface TickerQuote {
+  price: number;
+  previousClose: number | null;
+}
+
 interface RequestOutcome {
-  prices: Record<string, number>;
+  quotes: Record<string, TickerQuote>;
   skipped: boolean;
 }
 
 interface JoinedLookup {
   ticker: string;
-  promise: Promise<number | null>;
+  promise: Promise<TickerQuote | null>;
 }
 
 interface Deferred {
-  promise: Promise<number | null>;
-  resolve: (value: number | null) => void;
+  promise: Promise<TickerQuote | null>;
+  resolve: (value: TickerQuote | null) => void;
 }
 
 /**
- * Fetches current market prices from Twelve Data
- * (https://api.twelvedata.com/price) and caches each ticker's price in Redis.
+ * Fetches current market quotes from Twelve Data
+ * (https://api.twelvedata.com/quote) and caches each ticker's quote in Redis.
  *
- * getPrices() flow:
+ * The `/quote` endpoint is used (rather than `/price`) because it returns both
+ * the current price (`close`) and a reference close (`previous_close`), which
+ * the portfolio view needs to compute `changePercent` and `dailyPnl`. The
+ * per-symbol credit cost is the same on the free tier.
+ *
+ * getQuotes() flow:
  *   1. drop requests whose position quantity is <= 0 (sold/empty positions);
  *   2. read every remaining ticker from Redis first;
  *   3. keep only the tickers that are not cached (or whose cached value is
@@ -46,6 +63,9 @@ interface Deferred {
  *   4. skip the network entirely when `missing` is empty;
  *   5. otherwise fetch just the misses and write the results back to Redis
  *      with a TTL.
+ *
+ * getPrices() is a thin wrapper around getQuotes() that returns only the
+ * price, kept for callers that do not care about the reference close.
  *
  * Rate limiting / resilience:
  * - A single Twelve Data request is capped at `maxSymbolsPerRequest` symbols
@@ -68,9 +88,9 @@ interface Deferred {
 @Injectable()
 export class TwelveDataService {
   private readonly logger = new Logger(TwelveDataService.name);
-  private readonly baseUrl = 'https://api.twelvedata.com/price';
+  private readonly baseUrl = 'https://api.twelvedata.com/quote';
   private readonly cacheTtlSeconds = 3600; // 1 hour
-  private readonly cacheKeyPrefix = 'prices:';
+  private readonly cacheKeyPrefix = 'quotes:';
   private readonly rateWindowMs = 60_000;
   private readonly defaultRateLimitBackoffMs = 60_000;
 
@@ -85,8 +105,8 @@ export class TwelveDataService {
   private rateLimitedUntil = 0;
   /** Serializes network calls so credit accounting stays accurate. */
   private requestChain: Promise<void> = Promise.resolve();
-  /** In-flight price lookups shared between concurrent getPrices() calls. */
-  private readonly inFlight = new Map<string, Promise<number | null>>();
+  /** In-flight quotes shared between concurrent getQuotes() calls. */
+  private readonly inFlight = new Map<string, Promise<TickerQuote | null>>();
 
   constructor(
     private readonly redisService: RedisService,
@@ -111,7 +131,7 @@ export class TwelveDataService {
   }
 
   /**
-   * Returns the latest price for each of the given tickers.
+   * Returns the latest quote (price + reference close) for each ticker.
    *
    * Accepts either bare tickers (`['AAPL']`) or tickers with a position size
    * (`[{ ticker: 'AAPL', quantity: 10 }]`). Requests with `quantity <= 0` are
@@ -122,14 +142,14 @@ export class TwelveDataService {
    * position. Tickers that couldn't be resolved (API failure, rate-limit
    * budget exhausted, unknown symbol) are simply omitted from the map.
    */
-  async getPrices(
+  async getQuotes(
     inputs: PriceLookupInput[],
-  ): Promise<Record<string, number>> {
+  ): Promise<Record<string, TickerQuote>> {
     const { wanted, closed } = this.splitByPositionSize(inputs);
 
     if (closed.length > 0) {
       this.logger.debug(
-        `getPrices: skipping ${closed.length} closed position(s): ${closed.join(', ')}`,
+        `getQuotes: skipping ${closed.length} closed position(s): ${closed.join(', ')}`,
       );
     }
 
@@ -137,7 +157,7 @@ export class TwelveDataService {
 
     // Step 1 — cache-first lookup. Read every requested ticker from Redis
     // before any network call, so we know exactly which ones are missing.
-    const prices: Record<string, number> = {};
+    const quotes: Record<string, TickerQuote> = {};
     const missing: string[] = [];
 
     const lookups = await Promise.all(
@@ -152,22 +172,22 @@ export class TwelveDataService {
         missing.push(ticker);
         continue;
       }
-      const price = Number(value);
-      if (Number.isFinite(price) && price > 0) {
-        prices[ticker] = price;
+      const quote = this.parseCachedQuote(value);
+      if (quote) {
+        quotes[ticker] = quote;
       } else {
-        // Corrupt or unusable cached value: treat as a miss and refresh it.
+        // Corrupt or legacy-format cached value: treat as a miss and refresh.
         missing.push(ticker);
       }
     }
 
-    const cacheHits = Object.keys(prices).length;
+    const cacheHits = Object.keys(quotes).length;
     this.logger.debug(
-      `getPrices: ${cacheHits} cache hit(s), ${missing.length} miss(es) of ${wanted.length}`,
+      `getQuotes: ${cacheHits} cache hit(s), ${missing.length} miss(es) of ${wanted.length}`,
     );
 
     // Step 2 — nothing to fetch: return what Redis gave us, no API call.
-    if (missing.length === 0) return prices;
+    if (missing.length === 0) return quotes;
 
     // Step 3 — split the misses into "join an existing request" and
     // "start a new one". This prevents two concurrent callers from fetching
@@ -183,8 +203,8 @@ export class TwelveDataService {
         continue;
       }
 
-      let resolveFn!: (value: number | null) => void;
-      const promise = new Promise<number | null>((resolve) => {
+      let resolveFn!: (value: TickerQuote | null) => void;
+      const promise = new Promise<TickerQuote | null>((resolve) => {
         resolveFn = resolve;
       });
       deferred.set(ticker, { promise, resolve: resolveFn });
@@ -195,41 +215,39 @@ export class TwelveDataService {
 
     if (toFetch.length > 0) {
       this.logger.debug(
-        `getPrices: requesting ${toFetch.length} ticker(s): ${toFetch.join(', ')}`,
+        `getQuotes: requesting ${toFetch.length} ticker(s): ${toFetch.join(', ')}`,
       );
 
       try {
         const fetched = await this.fetchInBatches(toFetch);
 
-        // Step 4 — write fresh prices back to Redis (with TTL) before
+        // Step 4 — write fresh quotes back to Redis (with TTL) before
         // resolving waiters, so a joiner that arrives right after us sees the
         // cache. Failed symbols are absent from `fetched`, so they stay
         // uncached and will be retried on the next call.
         await Promise.all(
-          Object.entries(fetched).map(([ticker, price]) =>
+          Object.entries(fetched).map(([ticker, quote]) =>
             this.redisService.set(
               this.cacheKey(ticker),
-              String(price),
+              JSON.stringify({ p: quote.price, pc: quote.previousClose }),
               this.cacheTtlSeconds,
             ),
           ),
         );
 
         for (const ticker of toFetch) {
-          const price = fetched[ticker];
+          const quote = fetched[ticker];
           deferred
             .get(ticker)!
             .resolve(
-              typeof price === 'number' &&
-                Number.isFinite(price) &&
-                price > 0
-                ? price
+              quote && Number.isFinite(quote.price) && quote.price > 0
+                ? quote
                 : null,
             );
         }
       } catch (error) {
         this.logger.error(
-          `getPrices: batch fetch failed: ${(error as Error).message}`,
+          `getQuotes: batch fetch failed: ${(error as Error).message}`,
         );
         for (const ticker of toFetch) deferred.get(ticker)!.resolve(null);
       } finally {
@@ -238,16 +256,31 @@ export class TwelveDataService {
     }
 
     const resolved = await Promise.all(joins.map((join) => join.promise));
-    resolved.forEach((price, index) => {
-      if (typeof price === 'number' && Number.isFinite(price) && price > 0) {
-        prices[joins[index].ticker] = price;
+    resolved.forEach((quote, index) => {
+      if (quote && Number.isFinite(quote.price) && quote.price > 0) {
+        quotes[joins[index].ticker] = quote;
       }
     });
 
     this.logger.debug(
-      `getPrices: resolved ${Object.keys(prices).length} of ${wanted.length} ticker(s)`,
+      `getQuotes: resolved ${Object.keys(quotes).length} of ${wanted.length} ticker(s)`,
     );
 
+    return quotes;
+  }
+
+  /**
+   * Convenience wrapper for callers that only need the current price.
+   * Delegates to getQuotes() so caching and rate limiting behave identically.
+   */
+  async getPrices(
+    inputs: PriceLookupInput[],
+  ): Promise<Record<string, number>> {
+    const quotes = await this.getQuotes(inputs);
+    const prices: Record<string, number> = {};
+    for (const [ticker, quote] of Object.entries(quotes)) {
+      prices[ticker] = quote.price;
+    }
     return prices;
   }
 
@@ -301,14 +334,41 @@ export class TwelveDataService {
     return `${this.cacheKeyPrefix}${ticker}`;
   }
 
+  /**
+   * Decodes a cached quote. New entries are stored as JSON
+   * `{"p":<price>,"pc":<previousClose|null>}`. Anything else (a legacy plain
+   * number, or corrupt JSON) is treated as a miss so the entry is refreshed
+   * in the new format.
+   */
+  private parseCachedQuote(raw: string): TickerQuote | null {
+    const trimmed = raw.trim();
+    if (!trimmed.startsWith('{')) return null;
+
+    try {
+      const obj = JSON.parse(trimmed) as { p?: unknown; pc?: unknown };
+      const price = Number(obj.p);
+      if (!Number.isFinite(price) || price <= 0) return null;
+
+      const previousCloseRaw = Number(obj.pc);
+      const previousClose =
+        Number.isFinite(previousCloseRaw) && previousCloseRaw > 0
+          ? previousCloseRaw
+          : null;
+
+      return { price, previousClose };
+    } catch {
+      return null;
+    }
+  }
+
   private async fetchInBatches(
     tickers: string[],
-  ): Promise<Record<string, number>> {
-    const result: Record<string, number> = {};
+  ): Promise<Record<string, TickerQuote>> {
+    const result: Record<string, TickerQuote> = {};
 
     if (!this.hasApiKey()) {
       this.logger.warn(
-        'TWELVE_DATA_API_KEY is not configured; skipping price fetch',
+        'TWELVE_DATA_API_KEY is not configured; skipping quote fetch',
       );
       return result;
     }
@@ -318,7 +378,7 @@ export class TwelveDataService {
       const outcome = await this.enqueueRequest(() =>
         this.executeRequest(batch),
       );
-      Object.assign(result, outcome.prices);
+      Object.assign(result, outcome.quotes);
       if (outcome.skipped) break;
     }
 
@@ -348,7 +408,7 @@ export class TwelveDataService {
           waitMs / 1000,
         )}s.`,
       );
-      return { prices: {}, skipped: true };
+      return { quotes: {}, skipped: true };
     }
 
     if (waitMs > 0) {
@@ -359,8 +419,8 @@ export class TwelveDataService {
     }
 
     this.consumeCredits(batch.length);
-    const prices = await this.fetchPrices(batch);
-    return { prices, skipped: false };
+    const quotes = await this.fetchQuotes(batch);
+    return { quotes, skipped: false };
   }
 
   /** Milliseconds until `credits` more credits can be spent (0 = now). */
@@ -397,13 +457,13 @@ export class TwelveDataService {
     }
   }
 
-  private async fetchPrices(
+  private async fetchQuotes(
     tickers: string[],
-  ): Promise<Record<string, number>> {
+  ): Promise<Record<string, TickerQuote>> {
     const apiKey = this.configService.get<string>('TWELVE_DATA_API_KEY') ?? '';
     if (!apiKey) {
       this.logger.warn(
-        'TWELVE_DATA_API_KEY is not configured; skipping price fetch',
+        'TWELVE_DATA_API_KEY is not configured; skipping quote fetch',
       );
       return {};
     }
@@ -444,7 +504,7 @@ export class TwelveDataService {
       }
 
       const payload: unknown = await response.json();
-      return this.normalizeResponse(payload, tickers);
+      return this.normalizeQuoteResponse(payload, tickers);
     } catch (error) {
       const err = error as Error;
       if (err.name === 'AbortError') {
@@ -478,21 +538,22 @@ export class TwelveDataService {
   }
 
   /**
-   * Normalises the two response shapes Twelve Data returns for `/price`:
+   * Normalises the two response shapes Twelve Data returns for `/quote`:
    *
-   *   Single symbol: { "price": "123.45" }
-   *   Batch:         { "AAPL": { "price": "123.45" }, "MSFT": { ... } }
+   *   Single symbol: { "symbol": "AAPL", "close": "123.45",
+   *                    "previous_close": "121.10", ... }
+   *   Batch:         { "AAPL": { "close": "123.45", ... }, "MSFT": { ... } }
    *   Error:         { "code": 401, "message": "...", "status": "error" }
    *
    * Failed symbols inside a batch are logged per-symbol and skipped without
    * dropping the successful ones.
    */
-  private normalizeResponse(
+  private normalizeQuoteResponse(
     payload: unknown,
     requestedTickers: string[],
-  ): Record<string, number> {
-    const prices: Record<string, number> = {};
-    if (!payload || typeof payload !== 'object') return prices;
+  ): Record<string, TickerQuote> {
+    const quotes: Record<string, TickerQuote> = {};
+    if (!payload || typeof payload !== 'object') return quotes;
 
     const root = payload as Record<string, unknown>;
 
@@ -500,35 +561,64 @@ export class TwelveDataService {
       this.logger.error(
         `Twelve Data error: ${String(root.message ?? 'unknown error')}`,
       );
-      return prices;
+      return quotes;
     }
 
-    // Single-symbol response.
-    if (requestedTickers.length === 1 && 'price' in root) {
-      const price = Number(root.price);
-      if (Number.isFinite(price) && price > 0) {
-        prices[requestedTickers[0]] = price;
+    // Single-symbol response (the quote fields sit at the top level).
+    if (
+      requestedTickers.length === 1 &&
+      ('close' in root || 'price' in root || 'previous_close' in root)
+    ) {
+      const quote = this.extractQuote(root);
+      if (quote) {
+        quotes[requestedTickers[0]] = quote;
+      } else {
+        this.logger.warn(
+          `Twelve Data returned no quote for ${requestedTickers[0]}: ${String(
+            root.message ?? 'unknown',
+          )}`,
+        );
       }
-      return prices;
+      return quotes;
     }
 
-    // Batch response.
+    // Batch response: { TICKER: { close, previous_close, ... } }.
     for (const [ticker, entry] of Object.entries(root)) {
       if (!entry || typeof entry !== 'object') continue;
       const entryObj = entry as Record<string, unknown>;
-      const price = Number(entryObj.price);
-      if (Number.isFinite(price) && price > 0) {
-        prices[ticker] = price;
+      const quote = this.extractQuote(entryObj);
+      if (quote) {
+        quotes[ticker] = quote;
       } else {
         this.logger.warn(
-          `Twelve Data returned no price for ${ticker}: ${String(
+          `Twelve Data returned no quote for ${ticker}: ${String(
             entryObj.message ?? 'unknown',
           )}`,
         );
       }
     }
 
-    return prices;
+    return quotes;
+  }
+
+  /**
+   * Pulls price + previous close out of one quote entry. Returns null when
+   * the entry has no usable price, which the caller treats as a miss.
+   */
+  private extractQuote(entry: Record<string, unknown>): TickerQuote | null {
+    // /quote uses `close`; `price` is kept as a fallback in case Twelve Data
+    // returns the /price shape or an alternative payload.
+    const rawPrice = entry.close ?? entry.price;
+    const price = Number(rawPrice);
+    if (!Number.isFinite(price) || price <= 0) return null;
+
+    const previousCloseRaw = Number(entry.previous_close);
+    const previousClose =
+      Number.isFinite(previousCloseRaw) && previousCloseRaw > 0
+        ? previousCloseRaw
+        : null;
+
+    return { price, previousClose };
   }
 
   private hasApiKey(): boolean {

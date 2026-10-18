@@ -4,7 +4,10 @@ import { FindOptionsWhere, In, Repository } from 'typeorm';
 import { StatementRecord } from '../entities/statement-record.entity';
 import { PortfolioDto, PositionDto } from '../dtos/position.dto';
 import { CashReportService } from '../cash/cash-report.service';
-import { PriceLookup, TwelveDataService } from '../prices/twelve-data.service';
+import {
+  PriceLookup,
+  TwelveDataService,
+} from '../prices/twelve-data.service';
 import {
   BASIS_KEYS,
   CURRENCY_PAIR_PATTERN,
@@ -28,6 +31,8 @@ interface PricedPosition {
   ticker: string;
   quantity: number;
   price: number;
+  changePercent: number;
+  dailyPnl: number;
   avgPrice: number;
   costBasis: number;
   marketValue: number;
@@ -36,7 +41,12 @@ interface PricedPosition {
 
 /**
  * Aggregates raw IBKR statement rows into a portfolio view (positions + cash),
- * enriched with live prices pulled from Twelve Data.
+ * enriched with live quotes pulled from Twelve Data.
+ *
+ * `changePercent` and `dailyPnl` are derived from the quote's reference close
+ * (`previous_close`). When Twelve Data does not supply a reference close, or
+ * when a live price is unavailable, both fields fall back to 0 and
+ * `marketValue` falls back to cost basis.
  *
  * This service only reads statement records; it does not own the portfolio
  * lifecycle (create/rename/delete) nor the CSV parsing itself.
@@ -74,7 +84,7 @@ export class PortfolioBuilderService {
 
     const positions = this.aggregateTrades(records);
 
-    // Only ask for prices for tickers that are actually held right now.
+    // Only ask for quotes for tickers that are actually held right now.
     // Sold-out or short positions (quantity <= 0) must never reach Twelve
     // Data: each symbol costs one credit, and a closed position has no price
     // worth showing. The quantity is passed along as well so the price service
@@ -86,7 +96,7 @@ export class PortfolioBuilderService {
       }
     }
 
-    const prices = await this.twelveDataService.getPrices(lookups);
+    const quotes = await this.twelveDataService.getQuotes(lookups);
 
     const priced: PricedPosition[] = [];
     let positionsMarketValue = 0;
@@ -98,8 +108,15 @@ export class PortfolioBuilderService {
       const avgPrice =
         position.buyQuantity > 0 ? position.buyCost / position.buyQuantity : 0;
       const costBasis = position.quantity * avgPrice;
-      const marketPrice = prices[position.ticker] ?? 0;
-      const hasPrice = marketPrice > 0;
+
+      const quote = quotes[position.ticker];
+      const hasPrice = quote !== undefined && quote.price > 0;
+      const marketPrice = hasPrice ? quote.price : 0;
+      const previousClose = hasPrice ? quote.previousClose : null;
+      const hasPreviousClose =
+        previousClose !== null &&
+        Number.isFinite(previousClose) &&
+        previousClose > 0;
 
       // Without a live price we fall back to cost basis (see class docstring).
       const marketValue = hasPrice
@@ -107,11 +124,24 @@ export class PortfolioBuilderService {
         : costBasis;
       const unrealizedPnl = hasPrice ? marketValue - costBasis : 0;
 
+      // Day's percent change and daily P/L come from the reference close.
+      // Without one we cannot say anything about today, so both stay 0.
+      const changePercent =
+        hasPrice && hasPreviousClose
+          ? ((marketPrice - previousClose) / previousClose) * 100
+          : 0;
+      const dailyPnl =
+        hasPrice && hasPreviousClose
+          ? position.quantity * (marketPrice - previousClose)
+          : 0;
+
       positionsMarketValue += marketValue;
       priced.push({
         ticker: position.ticker,
         quantity: position.quantity,
         price: hasPrice ? marketPrice : 0,
+        changePercent,
+        dailyPnl,
         avgPrice,
         costBasis,
         marketValue,
@@ -130,12 +160,11 @@ export class PortfolioBuilderService {
         totalValue > 0 ? (p.marketValue / totalValue) * 100 : 0;
       return {
         ticker: p.ticker,
-        name: p.ticker, // no company-name source available from /price
+        name: p.ticker, // no company-name source available from /quote
         quantity: roundQuantity(p.quantity),
         price: round(p.price),
-        // Requires previous close, which /price does not expose.
-        changePercent: 0,
-        dailyPnl: 0,
+        changePercent: round(p.changePercent),
+        dailyPnl: round(p.dailyPnl),
         avgPrice: round(p.avgPrice),
         costBasis: round(p.costBasis),
         marketValue: round(p.marketValue),
