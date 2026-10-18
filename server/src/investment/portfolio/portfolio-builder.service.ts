@@ -37,16 +37,23 @@ interface PricedPosition {
   costBasis: number;
   marketValue: number;
   unrealizedPnl: number;
+  unrealizedPnlPercent: number;
 }
 
 /**
  * Aggregates raw IBKR statement rows into a portfolio view (positions + cash),
  * enriched with live quotes pulled from Twelve Data.
  *
- * `changePercent` and `dailyPnl` are derived from the quote's reference close
- * (`previous_close`). When Twelve Data does not supply a reference close, or
- * when a live price is unavailable, both fields fall back to 0 and
- * `marketValue` falls back to cost basis.
+ * Two different percentages are produced and they must not be confused:
+ *
+ * - `changePercent` — today's move of the price against the quote's reference
+ *   close (`previous_close`). It can be negative while the position is in
+ *   profit, because it only describes the current session.
+ * - `unrealizedPnlPercent` — total return of the position against its cost
+ *   basis (`unrealizedPnl / costBasis`), i.e. "how much am I up overall".
+ *
+ * When Twelve Data does not supply a quote (or a usable previous close), the
+ * affected fields fall back to 0 and `marketValue` falls back to cost basis.
  *
  * This service only reads statement records; it does not own the portfolio
  * lifecycle (create/rename/delete) nor the CSV parsing itself.
@@ -124,6 +131,11 @@ export class PortfolioBuilderService {
         : costBasis;
       const unrealizedPnl = hasPrice ? marketValue - costBasis : 0;
 
+      // Total return of the holding against what was paid for it. Guarded on
+      // costBasis > 0 so a position with unknown basis yields 0, not Infinity.
+      const unrealizedPnlPercent =
+        costBasis > 0 ? (unrealizedPnl / costBasis) * 100 : 0;
+
       // Day's percent change and daily P/L come from the reference close.
       // Without one we cannot say anything about today, so both stay 0.
       const changePercent =
@@ -146,6 +158,7 @@ export class PortfolioBuilderService {
         costBasis,
         marketValue,
         unrealizedPnl,
+        unrealizedPnlPercent,
       });
     }
 
@@ -169,6 +182,7 @@ export class PortfolioBuilderService {
         costBasis: round(p.costBasis),
         marketValue: round(p.marketValue),
         unrealizedPnl: round(p.unrealizedPnl),
+        unrealizedPnlPercent: round(p.unrealizedPnlPercent),
         allocation: round(allocation),
       };
     });

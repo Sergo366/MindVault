@@ -122,6 +122,8 @@ export default function InvestmentsPage() {
             key={item.id}
             name={item.name}
             totalValue={item.totalValue}
+            unrealizedPnl={item.unrealizedPnl}
+            unrealizedPnlPercent={item.unrealizedPnlPercent}
             selected={selectedId === item.id}
             onToggle={() => selectPortfolio(item.id)}
           />

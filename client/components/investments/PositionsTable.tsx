@@ -29,8 +29,11 @@ function formatQuantity(value: number | null | undefined): string {
   return quantityFormatter.format(value);
 }
 
-function formatChange(value: number | null | undefined): string {
-  if (value === null || value === undefined) return EMPTY_VALUE;
+/** Formats a percentage with an explicit sign, e.g. "+16.09%". */
+function formatPercent(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return EMPTY_VALUE;
+  }
   return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
 }
 
@@ -39,6 +42,31 @@ function pnlTextClass(value: number | null | undefined): string {
   if (value > 0) return 'text-primary';
   if (value < 0) return 'text-red-400';
   return 'text-stone-400';
+}
+
+/**
+ * Total return of one position relative to its cost basis, in percent.
+ *
+ * This is NOT the daily change — it answers "how much am I up/down overall",
+ * whereas `position.changePercent` is today's move against the previous close.
+ *
+ * The backend computes `unrealizedPnlPercent`, so that value is preferred
+ * (single source of truth). The local calculation from `unrealizedPnl` /
+ * `costBasis` remains as a fallback for older or cached payloads.
+ *
+ * Returns null when the cost basis is unknown or zero, so the cell renders a
+ * dash instead of a misleading "+0.00%".
+ */
+function totalReturnPercent(position: Position): number | null {
+  const costBasis = Number(position.costBasis ?? 0);
+  if (!Number.isFinite(costBasis) || costBasis <= 0) return null;
+
+  const fromApi = Number(position.unrealizedPnlPercent);
+  if (Number.isFinite(fromApi)) return fromApi;
+
+  const pnl = Number(position.unrealizedPnl ?? 0);
+  if (!Number.isFinite(pnl)) return null;
+  return (pnl / costBasis) * 100;
 }
 
 // Deterministic accent per ticker so row avatars are not all the same colour.
@@ -72,6 +100,7 @@ type SortKey =
   | 'costBasis'
   | 'marketValue'
   | 'unrealizedPnl'
+  | 'unrealizedPnlPercent'
   | 'allocation';
 
 type SortDirection = 'asc' | 'desc';
@@ -80,6 +109,9 @@ interface ColumnDef {
   key: SortKey;
   label: string;
   align: 'left' | 'right';
+  // Tooltip clarifying what the column actually measures (two different
+  // percentages sit next to each other: daily change and total return).
+  hint?: string;
 }
 
 // Column labels are kept short on purpose — the table stays readable without
@@ -88,18 +120,33 @@ const COLUMNS: ColumnDef[] = [
   { key: 'name', label: 'Назва', align: 'left' },
   { key: 'quantity', label: 'К-сть', align: 'right' },
   { key: 'price', label: 'Ціна', align: 'right' },
-  { key: 'changePercent', label: 'Зміна %', align: 'right' },
+  {
+    key: 'changePercent',
+    label: 'Зміна %',
+    align: 'right',
+    hint: 'Зміна ціни за сьогодні відносно попереднього закриття',
+  },
   { key: 'dailyPnl', label: 'Ден. P&L', align: 'right' },
   { key: 'avgPrice', label: 'Сер. ціна', align: 'right' },
   { key: 'costBasis', label: 'Собів.', align: 'right' },
   { key: 'marketValue', label: 'Варт.', align: 'right' },
   { key: 'unrealizedPnl', label: 'P&L', align: 'right' },
+  {
+    key: 'unrealizedPnlPercent',
+    label: 'P&L %',
+    align: 'right',
+    hint: 'Прибуток/збиток відносно собівартості за весь час',
+  },
   { key: 'allocation', label: 'Алок.', align: 'right' },
 ];
 
-// The "name" column sorts by ticker; everything else sorts by its numeric value.
+// The "name" column sorts by ticker; "unrealizedPnlPercent" is derived from
+// other fields; everything else sorts by its own numeric value.
 function getSortValue(position: Position, key: SortKey): string | number {
   if (key === 'name') return position.ticker.toLowerCase();
+  if (key === 'unrealizedPnlPercent') {
+    return totalReturnPercent(position) ?? 0;
+  }
   const value = position[key];
   return value ?? 0;
 }
@@ -202,7 +249,7 @@ export default function PositionsTable({ positions, cash }: PositionsTableProps)
   return (
     <div className="w-full overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02]">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[900px] border-collapse text-[13px]">
+        <table className="w-full min-w-[960px] border-collapse text-[13px]">
           <thead>
             <tr className="border-b border-white/10 bg-white/[0.04] text-[11px] font-semibold uppercase tracking-wider text-stone-400">
               {COLUMNS.map((column) => (
@@ -217,6 +264,7 @@ export default function PositionsTable({ positions, cash }: PositionsTableProps)
                   <button
                     type="button"
                     onClick={() => handleSort(column.key)}
+                    title={column.hint}
                     className={classNames(
                       'inline-flex items-center gap-1 transition-colors hover:text-white',
                       column.align === 'right' ? 'flex-row-reverse' : '',
@@ -236,6 +284,7 @@ export default function PositionsTable({ positions, cash }: PositionsTableProps)
           <tbody>
             {sortedRows.map((position, index) => {
               const allocation = position.allocation ?? 0;
+              const pnlPercent = totalReturnPercent(position);
               return (
                 <tr
                   key={position.ticker}
@@ -273,19 +322,19 @@ export default function PositionsTable({ positions, cash }: PositionsTableProps)
                     {formatQuantity(position.quantity)}
                   </td>
 
-                  {/* Current market price (0 until a quotes API exists) */}
+                  {/* Current market price */}
                   <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-stone-200">
                     {formatCurrency(position.price)}
                   </td>
 
-                  {/* % change */}
+                  {/* Daily % change vs previous close (NOT the total return) */}
                   <td
                     className={classNames(
                       'whitespace-nowrap px-3 py-2 text-right font-medium tabular-nums',
                       pnlTextClass(position.changePercent),
                     )}
                   >
-                    {formatChange(position.changePercent)}
+                    {formatPercent(position.changePercent)}
                   </td>
 
                   {/* Daily P&L */}
@@ -321,6 +370,16 @@ export default function PositionsTable({ positions, cash }: PositionsTableProps)
                     )}
                   >
                     {formatCurrency(position.unrealizedPnl)}
+                  </td>
+
+                  {/* Unrealized P&L as a percentage of cost basis */}
+                  <td
+                    className={classNames(
+                      'whitespace-nowrap px-3 py-2 text-right font-medium tabular-nums',
+                      pnlTextClass(pnlPercent),
+                    )}
+                  >
+                    {formatPercent(pnlPercent)}
                   </td>
 
                   {/* Allocation (% of portfolio) with a small bar */}
