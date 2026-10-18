@@ -7,9 +7,11 @@ import {
   CreatedPortfolioDto,
   PortfolioDto,
   PortfolioSummaryDto,
+  PositionDto,
 } from './dtos/position.dto';
 import { IbkrStatementParser } from './parsers/ibkr-statement-parser.service';
 import { PortfolioBuilderService } from './portfolio/portfolio-builder.service';
+import { round } from './utils/ibkr.util';
 
 /**
  * Thin facade over the investment feature. It orchestrates the collaborators
@@ -67,8 +69,9 @@ export class InvestmentService {
   }
 
   /**
-   * Lists the user's portfolios with their aggregate value (positions cost
-   * basis + cash), used to render the portfolio cards on the client.
+   * Lists the user's portfolios with their aggregate value (positions market
+   * value + cash) and aggregate total return, used to render the portfolio
+   * cards on the client.
    */
   async getUserPortfolios(userId: string): Promise<PortfolioSummaryDto[]> {
     const portfolios = await this.portfolioRepository.find({
@@ -81,11 +84,21 @@ export class InvestmentService {
       const totals = await this.portfolioBuilder.buildPortfolio(userId, [
         portfolio.id,
       ]);
+
+      const { costBasis, unrealizedPnl } = this.aggregateReturn(
+        totals.positions,
+      );
+      const unrealizedPnlPercent =
+        costBasis > 0 ? round((unrealizedPnl / costBasis) * 100) : 0;
+
       summaries.push({
         id: portfolio.id,
         name: portfolio.name,
         cash: totals.cash,
         totalValue: totals.totalValue,
+        costBasis: round(costBasis),
+        unrealizedPnl: round(unrealizedPnl),
+        unrealizedPnlPercent,
       });
     }
     return summaries;
@@ -141,5 +154,31 @@ export class InvestmentService {
       { name },
     );
     return Boolean(result.affected && result.affected > 0);
+  }
+
+  /**
+   * Aggregates total return (cost basis and unrealized P&L) across the
+   * positions that actually have a live quote.
+   *
+   * Positions without a quote are skipped on purpose: their `marketValue`
+   * falls back to cost basis and their `unrealizedPnl` is 0, so including them
+   * would dilute the portfolio-wide percentage toward zero and understate the
+   * real result.
+   */
+  private aggregateReturn(positions: PositionDto[]): {
+    costBasis: number;
+    unrealizedPnl: number;
+  } {
+    let costBasis = 0;
+    let unrealizedPnl = 0;
+
+    for (const position of positions) {
+      if (!(position.price > 0)) continue;
+      if (!(position.costBasis > 0)) continue;
+      costBasis += position.costBasis;
+      unrealizedPnl += position.unrealizedPnl;
+    }
+
+    return { costBasis, unrealizedPnl };
   }
 }

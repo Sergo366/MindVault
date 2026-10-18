@@ -11,11 +11,45 @@ const currencyFormatter = new Intl.NumberFormat('en-US', {
   maximumFractionDigits: 2,
 });
 
+const EMPTY_VALUE = '—';
+
+/** Formats a percentage with an explicit sign, e.g. "+16.09%". */
+function formatPercent(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return EMPTY_VALUE;
+  }
+  return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
+}
+
+/** Formats a signed amount, e.g. "+$2,585.86" / "-$120.00". */
+function formatSignedCurrency(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return EMPTY_VALUE;
+  }
+  return `${value >= 0 ? '+' : '-'}${currencyFormatter.format(Math.abs(value))}`;
+}
+
+/** Green for profit, red for loss, muted when the value is unknown. */
+function pnlTextClass(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return 'text-stone-500';
+  }
+  if (value > 0) return 'text-primary';
+  if (value < 0) return 'text-red-400';
+  return 'text-stone-400';
+}
+
 interface PortfolioCardProps {
   name: string;
   totalValue: number;
   selected: boolean;
   onToggle: () => void;
+
+  // Total return of the portfolio against its cost basis. Optional so callers
+  // that do not have the aggregate numbers keep working; the card renders a
+  // dash instead of a misleading "+0.00%".
+  unrealizedPnl?: number | null;
+  unrealizedPnlPercent?: number | null;
 }
 
 export function PortfolioCard({
@@ -23,7 +57,20 @@ export function PortfolioCard({
   totalValue,
   selected,
   onToggle,
+  unrealizedPnl,
+  unrealizedPnlPercent,
 }: PortfolioCardProps) {
+  const hasReturn =
+    unrealizedPnlPercent !== null &&
+    unrealizedPnlPercent !== undefined &&
+    Number.isFinite(unrealizedPnlPercent);
+
+  const returnTitle = hasReturn
+    ? `Дохідність відносно собівартості: ${formatSignedCurrency(
+        unrealizedPnl,
+      )} (${formatPercent(unrealizedPnlPercent)})`
+    : 'Дохідність недоступна: немає актуальних котирувань';
+
   return (
     <button
       type="button"
@@ -54,8 +101,19 @@ export function PortfolioCard({
 
       <div className="min-w-0">
         <div className="truncate font-semibold text-white">{name}</div>
-        <div className="mt-0.5 text-sm font-medium tabular-nums text-primary">
-          {currencyFormatter.format(totalValue)}
+        <div className="mt-0.5 flex items-baseline justify-between gap-2">
+          <span className="truncate text-sm font-medium tabular-nums text-primary">
+            {currencyFormatter.format(totalValue)}
+          </span>
+          <span
+            title={returnTitle}
+            className={classNames(
+              'shrink-0 text-[11px] font-semibold tabular-nums',
+              pnlTextClass(hasReturn ? unrealizedPnlPercent : null),
+            )}
+          >
+            {formatPercent(hasReturn ? unrealizedPnlPercent : null)}
+          </span>
         </div>
       </div>
     </button>

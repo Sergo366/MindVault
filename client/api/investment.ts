@@ -5,18 +5,22 @@ export interface Position {
   name: string;
   quantity: number;
 
-  // Market-price dependent (0 until a quotes API exists)
+  // Market-price dependent: live price and today's move vs the previous close.
+  // Note: `changePercent` is the DAILY change, not the total return.
   price: number;
   changePercent: number;
   dailyPnl: number;
 
-  // Computed from the user's own trade history
+  // Computed from the user's own trade history.
   avgPrice: number;
   costBasis: number;
 
-  // Market-price dependent (0 until a quotes API exists)
+  // Market-price dependent: position value at the current price, and the
+  // profit/loss relative to `costBasis` (absolute and in percent). The percent
+  // is the TOTAL return ("how much am I up overall"), unlike `changePercent`.
   marketValue: number;
   unrealizedPnl: number;
+  unrealizedPnlPercent: number;
 
   // Share of this position in the total portfolio value, in percent.
   allocation: number;
@@ -33,6 +37,12 @@ export interface PortfolioSummary {
   name: string;
   cash: number;
   totalValue: number;
+
+  // Aggregate total return across priced positions. Optional because the
+  // create/update portfolio endpoints return a summary without positions.
+  costBasis?: number;
+  unrealizedPnl?: number;
+  unrealizedPnlPercent?: number;
 }
 
 export interface UploadStatementsResult {
