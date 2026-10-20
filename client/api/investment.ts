@@ -11,6 +11,11 @@ export interface Position {
   changePercent: number;
   dailyPnl: number;
 
+  // Reference close (`previous_close` from the quote). NOT premarket data —
+  // it is the previous session's close, used for `changePercent`/`dailyPnl`.
+  // Optional so payloads cached before the field existed still type-check.
+  previousClose?: number | null;
+
   // Computed from the user's own trade history.
   avgPrice: number;
   costBasis: number;

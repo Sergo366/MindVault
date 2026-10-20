@@ -5,8 +5,8 @@
  * (client/api/investment.ts) so the payload can be rendered directly.
  *
  * Market-price dependent fields come from the Twelve Data `/quote` endpoint:
- * `price`, `changePercent`, `dailyPnl`, `marketValue`, `unrealizedPnl` and
- * `unrealizedPnlPercent`.
+ * `price`, `previousClose`, `changePercent`, `dailyPnl`, `marketValue`,
+ * `unrealizedPnl` and `unrealizedPnlPercent`.
  *
  * Note that TWO different percentages are returned — they answer different
  * questions and must not be confused:
@@ -18,8 +18,8 @@
  *   cost basis ("how much am I up overall").
  *
  * When a live quote (or its previous close) is unavailable, these fields fall
- * back to 0 and `marketValue` falls back to cost basis, so the client can
- * still render the row.
+ * back to 0 / null and `marketValue` falls back to cost basis, so the client
+ * can still render the row.
  */
 export interface PositionDto {
   ticker: string;
@@ -30,6 +30,12 @@ export interface PositionDto {
   price: number;
   changePercent: number;
   dailyPnl: number;
+
+  // Reference close (`previous_close` from Twelve Data) used to compute
+  // `changePercent` and `dailyPnl`. `null` when the quote has no usable
+  // previous close. Exposed so the client can show it in a tooltip instead of
+  // spending a whole table column on it.
+  previousClose: number | null;
 
   // Computed from the user's own trade history.
   avgPrice: number;

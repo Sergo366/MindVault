@@ -1,12 +1,6 @@
 'use client';
 
-import {
-  ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
-  TrendingUp,
-  Wallet,
-} from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { classNames } from '@/lib/styles/classNames';
 import { usePositions } from '@/hooks/usePositions';
@@ -56,6 +50,37 @@ function pnlTextClass(value: number | null | undefined): string {
   if (value > 0) return 'text-primary';
   if (value < 0) return 'text-red-400';
   return 'text-stone-400';
+}
+
+/** Soft tinted background for the P&L percentage badge. */
+function pnlBadgeClass(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return 'bg-white/5 text-stone-400';
+  }
+  if (value > 0) return 'bg-primary/10 text-primary';
+  if (value < 0) return 'bg-red-400/10 text-red-400';
+  return 'bg-white/5 text-stone-400';
+}
+
+/**
+ * Tooltip for the daily-change cell. `previousClose` is the previous session's
+ * close (Twelve Data `previous_close`) — not premarket data — so this lets the
+ * user see the reference price without adding another column.
+ */
+function changeTooltip(position: Position): string | undefined {
+  const previousClose = Number(position.previousClose ?? NaN);
+  if (!Number.isFinite(previousClose) || previousClose <= 0) return undefined;
+
+  const parts = [
+    `Попереднє закриття: ${currencyFormatter.format(previousClose)}`,
+  ];
+
+  const price = Number(position.price ?? NaN);
+  if (Number.isFinite(price) && price > 0) {
+    parts.push(`Денна зміна: ${formatSignedCurrency(price - previousClose)}`);
+  }
+
+  return parts.join(' · ');
 }
 
 /**
@@ -278,13 +303,14 @@ export default function PositionsTable({
   }, [rows, sortKey, sortDirection]);
 
   // Aggregate P&L for the footer: server-provided value first, local
-  // computation only as a fallback so the row is never blank.
+  // computation only as a fallback so the summary is never blank.
   const fallbackTotals = useMemo(() => computeTotalsFromRows(rows), [rows]);
   const effectiveTotals = totals ?? query.data?.totals ?? fallbackTotals;
 
   // With no counted positions there is nothing meaningful to show: render a
   // dash instead of a misleading "+$0.00 (+0.00%)".
   const hasTotals = effectiveTotals.costBasis > 0;
+  const totalCostBasis = hasTotals ? effectiveTotals.costBasis : null;
   const totalPnl = hasTotals ? effectiveTotals.unrealizedPnl : null;
   const totalPnlPercent = hasTotals ? effectiveTotals.unrealizedPnlPercent : null;
 
@@ -351,6 +377,7 @@ export default function PositionsTable({
             {sortedRows.map((position, index) => {
               const allocation = position.allocation ?? 0;
               const pnlPercent = totalReturnPercent(position);
+              const dailyTooltip = changeTooltip(position);
               return (
                 <tr
                   key={position.ticker}
@@ -393,10 +420,13 @@ export default function PositionsTable({
                     {formatCurrency(position.price)}
                   </td>
 
-                  {/* Daily % change vs previous close (NOT the total return) */}
+                  {/* Daily % change vs previous close (NOT the total return).
+                      The previous close itself is exposed in the tooltip. */}
                   <td
+                    title={dailyTooltip}
                     className={classNames(
                       'whitespace-nowrap px-3 py-2 text-right font-medium tabular-nums',
+                      dailyTooltip ? 'cursor-help' : '',
                       pnlTextClass(position.changePercent),
                     )}
                   >
@@ -477,30 +507,40 @@ export default function PositionsTable({
       </div>
 
       {/*
-        Summary footer: cash balance plus the aggregate P&L across the counted
-        positions (same filter as the backend: priced positions with a known
-        cost basis and a non-negative allocation).
+        Summary footer: three calm stat blocks (cash, cost basis, total P&L)
+        instead of one long coloured line. The P&L percent sits in a tinted
+        badge so the number itself stays the focus.
       */}
-      <div className="border-t border-white/10 bg-white/[0.03] px-4 py-2.5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm text-stone-400">
-            <Wallet className="h-4 w-4 text-primary" />
-            <span>Cash</span>
-          </div>
-          <span className="text-sm font-semibold tabular-nums text-primary">
+      <dl className="grid grid-cols-1 gap-y-3 border-t border-white/10 bg-white/[0.03] px-4 py-3 sm:grid-cols-3 sm:gap-y-0 sm:divide-x sm:divide-white/10">
+        <div className="sm:pr-4">
+          <dt className="text-[10px] font-semibold uppercase tracking-wider text-stone-500">
+            Cash
+          </dt>
+          <dd className="mt-1 text-sm font-semibold tabular-nums text-primary">
             {formatCurrency(cashValue)}
-          </span>
+          </dd>
         </div>
 
-        <div className="mt-1.5 flex items-center justify-between">
-          <div
-            className="flex items-center gap-2 text-sm text-stone-400"
+        <div className="sm:px-4">
+          <dt
+            className="text-[10px] font-semibold uppercase tracking-wider text-stone-500"
+            title="Сума собівартості позицій, які враховуються у P&L"
+          >
+            Собівартість
+          </dt>
+          <dd className="mt-1 text-sm font-semibold tabular-nums text-stone-200">
+            {formatCurrency(totalCostBasis)}
+          </dd>
+        </div>
+
+        <div className="sm:pl-4 sm:text-right">
+          <dt
+            className="text-[10px] font-semibold uppercase tracking-wider text-stone-500"
             title="Сумарний P&L лише за позиціями, для яких є актуальна ціна та відома собівартість"
           >
-            <TrendingUp className="h-4 w-4 text-stone-400" />
-            <span>Усього P&L</span>
-          </div>
-          <div className="flex items-baseline gap-2">
+            Усього P&L
+          </dt>
+          <dd className="mt-1 flex items-baseline gap-2 sm:justify-end">
             <span
               className={classNames(
                 'text-sm font-semibold tabular-nums',
@@ -511,15 +551,15 @@ export default function PositionsTable({
             </span>
             <span
               className={classNames(
-                'text-xs font-medium tabular-nums',
-                pnlTextClass(totalPnlPercent),
+                'inline-flex items-center rounded-md px-1.5 py-0.5 text-[11px] font-semibold tabular-nums',
+                pnlBadgeClass(totalPnlPercent),
               )}
             >
               {formatPercent(totalPnlPercent)}
             </span>
-          </div>
+          </dd>
         </div>
-      </div>
+      </dl>
     </div>
   );
 }

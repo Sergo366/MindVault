@@ -35,6 +35,7 @@ interface PricedPosition {
   ticker: string;
   quantity: number;
   price: number;
+  previousClose: number | null;
   changePercent: number;
   dailyPnl: number;
   avgPrice: number;
@@ -56,8 +57,12 @@ interface PricedPosition {
  * - `unrealizedPnlPercent` — total return of the position against its cost
  *   basis (`unrealizedPnl / costBasis`), i.e. "how much am I up overall".
  *
+ * The reference close itself is exposed as `previousClose` so the client can
+ * show it in a tooltip without adding another column.
+ *
  * When Twelve Data does not supply a quote (or a usable previous close), the
- * affected fields fall back to 0 and `marketValue` falls back to cost basis.
+ * affected fields fall back to 0 / null and `marketValue` falls back to cost
+ * basis.
  *
  * Besides per-position rows the view exposes a `totals` block, aggregated over
  * the positions that were actually priced (see `computeTotals`). The client
@@ -138,6 +143,12 @@ export class PortfolioBuilderService {
         Number.isFinite(previousClose) &&
         previousClose > 0;
 
+      // Stored as-is (null when unusable) so the client can display it in a
+      // tooltip. Kept separate from the arithmetic below to avoid relying on
+      // narrowing of `hasPreviousClose`.
+      const storedPreviousClose =
+        hasPreviousClose && previousClose !== null ? previousClose : null;
+
       // Without a live price we fall back to cost basis (see class docstring).
       const marketValue = hasPrice
         ? position.quantity * marketPrice
@@ -165,6 +176,7 @@ export class PortfolioBuilderService {
         ticker: position.ticker,
         quantity: position.quantity,
         price: hasPrice ? marketPrice : 0,
+        previousClose: storedPreviousClose,
         changePercent,
         dailyPnl,
         avgPrice,
@@ -189,6 +201,7 @@ export class PortfolioBuilderService {
         name: p.ticker, // no company-name source available from /quote
         quantity: roundQuantity(p.quantity),
         price: round(p.price),
+        previousClose: p.previousClose === null ? null : round(p.previousClose),
         changePercent: round(p.changePercent),
         dailyPnl: round(p.dailyPnl),
         avgPrice: round(p.avgPrice),
