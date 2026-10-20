@@ -1,10 +1,16 @@
 'use client';
 
-import { ArrowDown, ArrowUp, ArrowUpDown, Wallet } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  TrendingUp,
+  Wallet,
+} from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { classNames } from '@/lib/styles/classNames';
 import { usePositions } from '@/hooks/usePositions';
-import type { Position } from '@/api/investment';
+import type { PortfolioTotals, Position } from '@/api/investment';
 
 export type { Position };
 
@@ -22,6 +28,14 @@ const EMPTY_VALUE = '—';
 function formatCurrency(value: number | null | undefined): string {
   if (value === null || value === undefined) return EMPTY_VALUE;
   return currencyFormatter.format(value);
+}
+
+/** Formats a signed amount, e.g. "+$2,585.86" / "-$120.00". */
+function formatSignedCurrency(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return EMPTY_VALUE;
+  }
+  return `${value >= 0 ? '+' : '-'}${currencyFormatter.format(Math.abs(value))}`;
 }
 
 function formatQuantity(value: number | null | undefined): string {
@@ -67,6 +81,40 @@ function totalReturnPercent(position: Position): number | null {
   const pnl = Number(position.unrealizedPnl ?? 0);
   if (!Number.isFinite(pnl)) return null;
   return (pnl / costBasis) * 100;
+}
+
+/**
+ * Computes the aggregate P&L directly from the rows.
+ *
+ * Used only when the parent did not pass `totals` and the fetched payload has
+ * no `totals` block (e.g. a response cached before the field existed). It
+ * mirrors the backend filter: only positions we price (`price > 0`), with a
+ * known cost basis and a non-negative allocation, contribute.
+ */
+function computeTotalsFromRows(rows: Position[]): PortfolioTotals {
+  let costBasis = 0;
+  let unrealizedPnl = 0;
+
+  for (const position of rows) {
+    const price = Number(position.price ?? 0);
+    const basis = Number(position.costBasis ?? 0);
+    const allocation = Number(position.allocation ?? 0);
+    const pnl = Number(position.unrealizedPnl ?? 0);
+
+    if (!(price > 0)) continue;
+    if (!(basis > 0)) continue;
+    if (!(allocation >= 0)) continue;
+    if (!Number.isFinite(pnl)) continue;
+
+    costBasis += basis;
+    unrealizedPnl += pnl;
+  }
+
+  return {
+    costBasis,
+    unrealizedPnl,
+    unrealizedPnlPercent: costBasis > 0 ? (unrealizedPnl / costBasis) * 100 : 0,
+  };
 }
 
 // Deterministic accent per ticker so row avatars are not all the same colour.
@@ -187,9 +235,16 @@ interface PositionsTableProps {
   positions?: Position[];
   // Free cash to display below the table. Taken from the query when not passed.
   cash?: number;
+  // Pre-computed aggregate P&L. Taken from the query when not passed, and
+  // derived from the rows as a last resort.
+  totals?: PortfolioTotals;
 }
 
-export default function PositionsTable({ positions, cash }: PositionsTableProps) {
+export default function PositionsTable({
+  positions,
+  cash,
+  totals,
+}: PositionsTableProps) {
   const shouldFetch = positions === undefined;
   const query = usePositions({ enabled: shouldFetch });
 
@@ -221,6 +276,17 @@ export default function PositionsTable({ positions, cash }: PositionsTableProps)
     });
     return sorted;
   }, [rows, sortKey, sortDirection]);
+
+  // Aggregate P&L for the footer: server-provided value first, local
+  // computation only as a fallback so the row is never blank.
+  const fallbackTotals = useMemo(() => computeTotalsFromRows(rows), [rows]);
+  const effectiveTotals = totals ?? query.data?.totals ?? fallbackTotals;
+
+  // With no counted positions there is nothing meaningful to show: render a
+  // dash instead of a misleading "+$0.00 (+0.00%)".
+  const hasTotals = effectiveTotals.costBasis > 0;
+  const totalPnl = hasTotals ? effectiveTotals.unrealizedPnl : null;
+  const totalPnlPercent = hasTotals ? effectiveTotals.unrealizedPnlPercent : null;
 
   if (shouldFetch && query.isLoading) {
     return (
@@ -410,15 +476,49 @@ export default function PositionsTable({ positions, cash }: PositionsTableProps)
         </table>
       </div>
 
-      {/* Cash footer: shown as a value below the table, not a data row */}
-      <div className="flex items-center justify-between border-t border-white/10 bg-white/[0.03] px-4 py-2.5">
-        <div className="flex items-center gap-2 text-sm text-stone-400">
-          <Wallet className="h-4 w-4 text-primary" />
-          <span>Cash</span>
+      {/*
+        Summary footer: cash balance plus the aggregate P&L across the counted
+        positions (same filter as the backend: priced positions with a known
+        cost basis and a non-negative allocation).
+      */}
+      <div className="border-t border-white/10 bg-white/[0.03] px-4 py-2.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm text-stone-400">
+            <Wallet className="h-4 w-4 text-primary" />
+            <span>Cash</span>
+          </div>
+          <span className="text-sm font-semibold tabular-nums text-primary">
+            {formatCurrency(cashValue)}
+          </span>
         </div>
-        <span className="text-sm font-semibold tabular-nums text-primary">
-          {formatCurrency(cashValue)}
-        </span>
+
+        <div className="mt-1.5 flex items-center justify-between">
+          <div
+            className="flex items-center gap-2 text-sm text-stone-400"
+            title="Сумарний P&L лише за позиціями, для яких є актуальна ціна та відома собівартість"
+          >
+            <TrendingUp className="h-4 w-4 text-stone-400" />
+            <span>Усього P&L</span>
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span
+              className={classNames(
+                'text-sm font-semibold tabular-nums',
+                pnlTextClass(totalPnl),
+              )}
+            >
+              {formatSignedCurrency(totalPnl)}
+            </span>
+            <span
+              className={classNames(
+                'text-xs font-medium tabular-nums',
+                pnlTextClass(totalPnlPercent),
+              )}
+            >
+              {formatPercent(totalPnlPercent)}
+            </span>
+          </div>
+        </div>
       </div>
     </div>
   );

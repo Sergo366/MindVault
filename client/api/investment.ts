@@ -26,10 +26,25 @@ export interface Position {
   allocation: number;
 }
 
+/**
+ * Aggregate profit/loss across the positions the view actually counts
+ * (priced positions with a known cost basis and a non-negative allocation).
+ */
+export interface PortfolioTotals {
+  costBasis: number;
+  unrealizedPnl: number;
+  unrealizedPnlPercent: number;
+}
+
 export interface Portfolio {
   positions: Position[];
   cash: number;
   totalValue: number;
+
+  // Summary block rendered under the positions table. Optional so payloads
+  // cached before the field existed still type-check; the table falls back to
+  // computing it from the rows.
+  totals?: PortfolioTotals;
 }
 
 export interface PortfolioSummary {

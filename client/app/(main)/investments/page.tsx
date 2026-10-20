@@ -212,7 +212,11 @@ export default function InvestmentsPage() {
           </label>
         </div>
       ) : (
-        <PositionsTable positions={positions} cash={portfolio?.cash} />
+        <PositionsTable
+          positions={positions}
+          cash={portfolio?.cash}
+          totals={portfolio?.totals}
+        />
       )}
     </div>
   );

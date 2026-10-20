@@ -2,7 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, In, Repository } from 'typeorm';
 import { StatementRecord } from '../entities/statement-record.entity';
-import { PortfolioDto, PositionDto } from '../dtos/position.dto';
+import {
+  PortfolioDto,
+  PortfolioTotalsDto,
+  PositionDto,
+} from '../dtos/position.dto';
 import { CashReportService } from '../cash/cash-report.service';
 import {
   PriceLookup,
@@ -55,6 +59,10 @@ interface PricedPosition {
  * When Twelve Data does not supply a quote (or a usable previous close), the
  * affected fields fall back to 0 and `marketValue` falls back to cost basis.
  *
+ * Besides per-position rows the view exposes a `totals` block, aggregated over
+ * the positions that were actually priced (see `computeTotals`). The client
+ * renders it as the summary row under the positions table.
+ *
  * This service only reads statement records; it does not own the portfolio
  * lifecycle (create/rename/delete) nor the CSV parsing itself.
  */
@@ -73,7 +81,12 @@ export class PortfolioBuilderService {
   ): Promise<PortfolioDto> {
     // An explicit empty selection means "nothing selected" -> empty portfolio.
     if (portfolioIds && portfolioIds.length === 0) {
-      return { positions: [], cash: 0, totalValue: 0 };
+      return {
+        positions: [],
+        cash: 0,
+        totalValue: 0,
+        totals: { costBasis: 0, unrealizedPnl: 0, unrealizedPnlPercent: 0 },
+      };
     }
 
     const tradesWhere: FindOptionsWhere<StatementRecord> = {
@@ -194,6 +207,40 @@ export class PortfolioBuilderService {
       positions: result,
       cash: round(cash),
       totalValue: round(totalValue),
+      totals: this.computeTotals(result),
+    };
+  }
+
+  /**
+   * Aggregates total return across the rows the portfolio view actually counts.
+   *
+   * Only positions with a live quote (`price > 0`), a known cost basis and a
+   * non-negative allocation are included. An unpriced position reports
+   * `unrealizedPnl = 0`, so including it would drag the portfolio-wide
+   * percentage toward zero and understate the real result.
+   *
+   * Percent is computed from the unrounded sums and rounded once at the end so
+   * it matches the per-position math.
+   */
+  private computeTotals(positions: PositionDto[]): PortfolioTotalsDto {
+    let costBasis = 0;
+    let unrealizedPnl = 0;
+
+    for (const position of positions) {
+      if (!(position.price > 0)) continue;
+      if (!(position.costBasis > 0)) continue;
+      if (!(position.allocation >= 0)) continue;
+      costBasis += position.costBasis;
+      unrealizedPnl += position.unrealizedPnl;
+    }
+
+    const unrealizedPnlPercent =
+      costBasis > 0 ? (unrealizedPnl / costBasis) * 100 : 0;
+
+    return {
+      costBasis: round(costBasis),
+      unrealizedPnl: round(unrealizedPnl),
+      unrealizedPnlPercent: round(unrealizedPnlPercent),
     };
   }
 

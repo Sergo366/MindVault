@@ -45,6 +45,27 @@ export interface PositionDto {
   allocation: number;
 }
 
+/**
+ * Aggregate profit/loss across the positions the portfolio view actually
+ * counts.
+ *
+ * "Counted" means the position has a live quote (`price > 0`), a known cost
+ * basis (`costBasis > 0`) and a non-negative allocation. Sold positions, short
+ * positions and positions without a quote are excluded: an unpriced position
+ * reports `unrealizedPnl = 0`, so including it would dilute the aggregate
+ * toward zero and understate the real result.
+ */
+export interface PortfolioTotalsDto {
+  // Sum of `costBasis` over the counted positions.
+  costBasis: number;
+
+  // Sum of `unrealizedPnl` over the counted positions.
+  unrealizedPnl: number;
+
+  // unrealizedPnl / costBasis * 100 (0 when no position is counted).
+  unrealizedPnlPercent: number;
+}
+
 export interface PortfolioDto {
   positions: PositionDto[];
 
@@ -55,6 +76,10 @@ export interface PortfolioDto {
   // the denominator for `allocation`. Positions without a live quote fall back
   // to their cost basis.
   totalValue: number;
+
+  // Aggregate P&L across the counted positions, shown as a summary row under
+  // the positions table.
+  totals: PortfolioTotalsDto;
 }
 
 /**
