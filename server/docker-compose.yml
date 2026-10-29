@@ -1,4 +1,0 @@
-git log --oneline -- server/docker-compose.yml      # кто и когда добавил, tracked ли
-grep -rn "docker-compose" --include="*.md" .         # упоминания в README/доках
-docker compose ls -a                                 # есть ли живой проект "server"
-docker volume ls | grep -E '^server_'                # остались ли его данные

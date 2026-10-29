@@ -1,5 +1,0 @@
-redis:
-  image: redis:7-alpine
-  container_name: mindvault-redis
-  ports:
-    - "6379:6379"

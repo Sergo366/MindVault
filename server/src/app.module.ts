@@ -10,6 +10,7 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { RedisModule } from './redis/redis.module';
 import { InvestmentModule } from './investment/investment.module';
+import { KnowledgeModule } from './knowledge/knowledge.module';
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { InvestmentModule } from './investment/investment.module';
     AuthModule,
     RedisModule,
     InvestmentModule,
+    KnowledgeModule,
   ],
   controllers: [AppController],
   providers: [
