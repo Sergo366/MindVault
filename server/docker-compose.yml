@@ -3,7 +3,7 @@ version: '3.8'
 services:
   redis:
     image: redis:alpine
-    container_name: fitly-redis
+    container_name: mindVault-redis
     ports:
       - '6379:6379'
     command: redis-server --appendonly yes
@@ -14,7 +14,7 @@ services:
     build:
       context: .
       target: development # Use the development stage from the Dockerfile
-    container_name: fitly-api
+    container_name: mindVault-api
     ports:
       - '4001:4001'
       - '9229:9229' # For debugging
