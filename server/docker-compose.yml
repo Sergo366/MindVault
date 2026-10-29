@@ -1,31 +1,4 @@
-version: '3.8'
-
-services:
-  redis:
-    image: redis:alpine
-    container_name: mindVault-redis
-    ports:
-      - '6379:6379'
-    command: redis-server --appendonly yes
-    volumes:
-      - redis-data:/data
-
-  api:
-    build:
-      context: .
-      target: development # Use the development stage from the Dockerfile
-    container_name: mindVault-api
-    ports:
-      - '4001:4001'
-      - '9229:9229' # For debugging
-    volumes:
-      - .:/app
-      - /app/node_modules
-    env_file:
-      - .env
-    depends_on:
-      - redis
-    command: npm run start:debug
-
-volumes:
-  redis-data:
+git log --oneline -- server/docker-compose.yml      # кто и когда добавил, tracked ли
+grep -rn "docker-compose" --include="*.md" .         # упоминания в README/доках
+docker compose ls -a                                 # есть ли живой проект "server"
+docker volume ls | grep -E '^server_'                # остались ли его данные
